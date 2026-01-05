@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"github.com/panozzaj/roost-dev/internal/config"
+	"github.com/panozzaj/roost-dev/internal/dns"
 	"github.com/panozzaj/roost-dev/internal/server"
 )
 
@@ -26,6 +27,7 @@ func main() {
 		httpPort      int
 		httpsPort     int
 		advertisePort int
+		dnsPort       int
 		tld           string
 		showHelp      bool
 		showVer       bool
@@ -43,6 +45,7 @@ func main() {
 	flag.IntVar(&httpPort, "http-port", 9080, "HTTP port to listen on")
 	flag.IntVar(&httpsPort, "https-port", 9443, "HTTPS port to listen on")
 	flag.IntVar(&advertisePort, "advertise-port", 80, "Port to use in URLs (0 = same as http-port)")
+	flag.IntVar(&dnsPort, "dns-port", 9053, "DNS server port")
 	flag.StringVar(&tld, "tld", "localhost", "Top-level domain to use")
 	flag.BoolVar(&showHelp, "help", false, "Show help")
 	flag.BoolVar(&showVer, "version", false, "Show version")
@@ -61,14 +64,14 @@ func main() {
 	}
 
 	if doSetup {
-		if err := runSetup(httpPort); err != nil {
+		if err := runSetup(httpPort, dnsPort, tld); err != nil {
 			log.Fatalf("Setup failed: %v", err)
 		}
 		os.Exit(0)
 	}
 
 	if doCleanup {
-		if err := runCleanup(); err != nil {
+		if err := runCleanup(tld); err != nil {
 			log.Fatalf("Cleanup failed: %v", err)
 		}
 		os.Exit(0)
@@ -117,6 +120,17 @@ func main() {
 	} else {
 		fmt.Printf("Dashboard at http://roost-dev.%s:%d\n", tld, urlPort)
 	}
+
+	// Start DNS server for custom TLDs
+	if tld != "localhost" {
+		dnsServer := dns.New(dnsPort, tld)
+		go func() {
+			if err := dnsServer.Start(); err != nil {
+				log.Printf("DNS server error: %v", err)
+			}
+		}()
+		fmt.Printf("DNS server on 127.0.0.1:%d for *.%s\n", dnsPort, tld)
+	}
 	fmt.Println()
 
 	// Warn if pf rules aren't set up but we're using port forwarding defaults
@@ -150,9 +164,10 @@ OPTIONS:
     --http-port <n>       HTTP port to listen on (default: 9080)
     --https-port <n>      HTTPS port to listen on (default: 9443)
     --advertise-port <n>  Port to use in URLs (default: 80)
+    --dns-port <n>        DNS server port (default: 9053)
     --tld <domain>        Top-level domain to use (default: localhost)
-    --setup               Setup pf rules to forward port 80 -> 9080 (requires sudo)
-    --cleanup             Remove pf rules (requires sudo)
+    --setup               Setup pf/DNS for the specified TLD (requires sudo)
+    --cleanup             Remove pf/DNS configuration (requires sudo)
     --help                Show this help
     --version             Show version
 
@@ -188,24 +203,29 @@ CONFIGURATION:
         # Access at http://backend-myproject.localhost
 
 SETUP (recommended):
-    # One-time setup to forward port 80 -> 9080
+    # One-time setup for .localhost (pf rules only)
     sudo roost-dev --setup
 
-    # Then just run roost-dev (no sudo needed)
-    roost-dev
+    # Or setup for .test TLD (pf rules + DNS resolver)
+    sudo roost-dev --setup --tld test
 
-    # Remove the forwarding rules if needed
+    # Then just run roost-dev (no sudo needed)
+    roost-dev              # for .localhost
+    roost-dev --tld test   # for .test
+
+    # Remove configuration
     sudo roost-dev --cleanup
+    sudo roost-dev --cleanup --tld test
 
 EXAMPLES:
     # After running --setup, just start roost-dev
     roost-dev
 
+    # Use .test TLD (requires setup with --tld test first)
+    roost-dev --tld test
+
     # Or run with sudo on port 80 directly (no setup needed)
     sudo roost-dev --http-port 80 --advertise-port 80
-
-    # Use .test TLD instead of .localhost
-    roost-dev --tld test
 `)
 }
 
@@ -214,8 +234,8 @@ const (
 	launchdPlistPath = "/Library/LaunchDaemons/dev.roost.pfctl.plist"
 )
 
-func runSetup(targetPort int) error {
-	fmt.Println("Setting up pf rules to forward port 80 -> 9080...")
+func runSetup(targetPort, dnsPort int, tld string) error {
+	fmt.Println("Setting up roost-dev...")
 
 	// Check if running as root
 	if os.Geteuid() != 0 {
@@ -314,15 +334,34 @@ rdr pass on lo0 inet proto tcp from any to any port 80 -> 127.0.0.1 port 9080
 		return fmt.Errorf("loading anchor: %w", err)
 	}
 
+	// Create DNS resolver file for custom TLD
+	if tld != "localhost" {
+		resolverDir := "/etc/resolver"
+		if err := os.MkdirAll(resolverDir, 0755); err != nil {
+			return fmt.Errorf("creating resolver directory: %w", err)
+		}
+
+		resolverPath := fmt.Sprintf("%s/%s", resolverDir, tld)
+		resolverContent := fmt.Sprintf("nameserver 127.0.0.1\nport %d\n", dnsPort)
+		fmt.Printf("Creating %s...\n", resolverPath)
+		if err := os.WriteFile(resolverPath, []byte(resolverContent), 0644); err != nil {
+			return fmt.Errorf("writing resolver file: %w", err)
+		}
+	}
+
 	fmt.Println()
 	fmt.Println("Setup complete!")
 	fmt.Println()
 	fmt.Println("Port 80 is now forwarded to port 9080.")
 	fmt.Println("You can now run roost-dev without sudo:")
 	fmt.Println()
-	fmt.Println("    roost-dev --http-port 9080")
+	if tld == "localhost" {
+		fmt.Println("    roost-dev")
+	} else {
+		fmt.Printf("    roost-dev --tld %s\n", tld)
+	}
 	fmt.Println()
-	fmt.Println("Then access your apps at http://appname.localhost")
+	fmt.Printf("Then access your apps at http://appname.%s\n", tld)
 	if needsUpdate {
 		fmt.Println()
 		fmt.Println("Note: /etc/pf.conf was modified. Backup saved to /etc/pf.conf.roost-dev-backup")
@@ -331,8 +370,8 @@ rdr pass on lo0 inet proto tcp from any to any port 80 -> 127.0.0.1 port 9080
 	return nil
 }
 
-func runCleanup() error {
-	fmt.Println("Removing roost-dev pf rules...")
+func runCleanup(tld string) error {
+	fmt.Println("Removing roost-dev configuration...")
 
 	// Check if running as root
 	if os.Geteuid() != 0 {
@@ -358,6 +397,15 @@ func runCleanup() error {
 		// Unload the launchd job first
 		exec.Command("/bin/launchctl", "unload", launchdPlistPath).Run()
 		os.Remove(launchdPlistPath)
+	}
+
+	// Remove DNS resolver file for custom TLD
+	if tld != "localhost" {
+		resolverPath := fmt.Sprintf("/etc/resolver/%s", tld)
+		if _, err := os.Stat(resolverPath); err == nil {
+			fmt.Printf("Removing %s...\n", resolverPath)
+			os.Remove(resolverPath)
+		}
 	}
 
 	fmt.Println()
