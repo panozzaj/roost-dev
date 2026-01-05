@@ -1,0 +1,371 @@
+package main
+
+import (
+	"flag"
+	"fmt"
+	"log"
+	"os"
+	"os/exec"
+	"os/signal"
+	"path/filepath"
+	"strings"
+	"syscall"
+
+	"github.com/panozzaj/roost-dev/internal/config"
+	"github.com/panozzaj/roost-dev/internal/server"
+)
+
+var (
+	version = "dev"
+)
+
+func main() {
+	// Flags
+	var (
+		configDir     string
+		httpPort      int
+		httpsPort     int
+		advertisePort int
+		tld           string
+		showHelp      bool
+		showVer       bool
+		doSetup       bool
+		doCleanup     bool
+	)
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defaultConfigDir := filepath.Join(homeDir, ".config", "roost-dev")
+
+	flag.StringVar(&configDir, "dir", defaultConfigDir, "Configuration directory")
+	flag.IntVar(&httpPort, "http-port", 9080, "HTTP port to listen on")
+	flag.IntVar(&httpsPort, "https-port", 9443, "HTTPS port to listen on")
+	flag.IntVar(&advertisePort, "advertise-port", 80, "Port to use in URLs (0 = same as http-port)")
+	flag.StringVar(&tld, "tld", "localhost", "Top-level domain to use")
+	flag.BoolVar(&showHelp, "help", false, "Show help")
+	flag.BoolVar(&showVer, "version", false, "Show version")
+	flag.BoolVar(&doSetup, "setup", false, "Setup pf rules for port forwarding (requires sudo)")
+	flag.BoolVar(&doCleanup, "cleanup", false, "Remove pf rules (requires sudo)")
+	flag.Parse()
+
+	if showHelp {
+		printUsage()
+		os.Exit(0)
+	}
+
+	if showVer {
+		fmt.Printf("roost-dev %s\n", version)
+		os.Exit(0)
+	}
+
+	if doSetup {
+		if err := runSetup(httpPort); err != nil {
+			log.Fatalf("Setup failed: %v", err)
+		}
+		os.Exit(0)
+	}
+
+	if doCleanup {
+		if err := runCleanup(); err != nil {
+			log.Fatalf("Cleanup failed: %v", err)
+		}
+		os.Exit(0)
+	}
+
+	// Ensure config directory exists
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		log.Fatalf("Failed to create config directory: %v", err)
+	}
+
+	// Load configuration
+	urlPort := advertisePort
+	if urlPort == 0 {
+		urlPort = httpPort
+	}
+	cfg := &config.Config{
+		Dir:       configDir,
+		HTTPPort:  httpPort,
+		HTTPSPort: httpsPort,
+		URLPort:   urlPort,
+		TLD:       tld,
+	}
+
+	// Create and start server
+	srv, err := server.New(cfg)
+	if err != nil {
+		log.Fatalf("Failed to create server: %v", err)
+	}
+
+	// Handle shutdown
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		<-sigCh
+		fmt.Println("\nShutting down...")
+		srv.Shutdown()
+		os.Exit(0)
+	}()
+
+	fmt.Printf("roost-dev %s\n", version)
+	fmt.Printf("Configuration directory: %s\n", configDir)
+	fmt.Printf("Listening on http://127.0.0.1:%d\n", httpPort)
+	if urlPort == 80 {
+		fmt.Printf("Dashboard at http://roost-dev.%s\n", tld)
+	} else {
+		fmt.Printf("Dashboard at http://roost-dev.%s:%d\n", tld, urlPort)
+	}
+	fmt.Println()
+
+	// Warn if pf rules aren't set up but we're using port forwarding defaults
+	if httpPort != urlPort && urlPort == 80 {
+		if _, err := os.Stat(pfAnchorPath); os.IsNotExist(err) {
+			yellow := "\033[33m"
+			reset := "\033[0m"
+			fmt.Println(yellow + "WARNING: URLs like http://myapp.localhost won't work yet.")
+			fmt.Println("")
+			fmt.Println("  roost-dev is running on port 9080, but your browser will")
+			fmt.Println("  try port 80. Run this once to set up the redirect:")
+			fmt.Println("")
+			fmt.Println("    sudo roost-dev --setup")
+			fmt.Println(reset)
+		}
+	}
+
+	if err := srv.Start(); err != nil {
+		log.Fatalf("Server error: %v", err)
+	}
+}
+
+func printUsage() {
+	fmt.Println(`roost-dev - Local development proxy for all your projects
+
+USAGE:
+    roost-dev [OPTIONS]
+
+OPTIONS:
+    --dir <path>          Configuration directory (default: ~/.config/roost-dev)
+    --http-port <n>       HTTP port to listen on (default: 9080)
+    --https-port <n>      HTTPS port to listen on (default: 9443)
+    --advertise-port <n>  Port to use in URLs (default: 80)
+    --tld <domain>        Top-level domain to use (default: localhost)
+    --setup               Setup pf rules to forward port 80 -> 9080 (requires sudo)
+    --cleanup             Remove pf rules (requires sudo)
+    --help                Show this help
+    --version             Show version
+
+CONFIGURATION:
+    Place config files in ~/.config/roost-dev/
+
+    Simple port file:
+        echo "3000" > ~/.config/roost-dev/myapp
+        # Access at http://myapp.localhost
+
+    Command file:
+        echo "npm run dev" > ~/.config/roost-dev/myapp
+        # roost-dev starts the command with PORT env var
+
+    Static file path:
+        echo "/path/to/index.html" > ~/.config/roost-dev/mysite
+        # Serves static files
+
+    YAML config (for multi-service projects):
+        # ~/.config/roost-dev/myproject.yml
+        name: myproject
+        root: ~/projects/myproject
+        services:
+          backend:
+            dir: backend
+            cmd: mix phx.server
+          frontend:
+            cmd: npm start
+            env:
+              API_URL: http://backend-myproject.localhost
+
+        # Access at http://frontend-myproject.localhost
+        # Access at http://backend-myproject.localhost
+
+SETUP (recommended):
+    # One-time setup to forward port 80 -> 9080
+    sudo roost-dev --setup
+
+    # Then just run roost-dev (no sudo needed)
+    roost-dev
+
+    # Remove the forwarding rules if needed
+    sudo roost-dev --cleanup
+
+EXAMPLES:
+    # After running --setup, just start roost-dev
+    roost-dev
+
+    # Or run with sudo on port 80 directly (no setup needed)
+    sudo roost-dev --http-port 80 --advertise-port 80
+
+    # Use .test TLD instead of .localhost
+    roost-dev --tld test
+`)
+}
+
+const (
+	pfAnchorPath   = "/etc/pf.anchors/roost-dev"
+	launchdPlistPath = "/Library/LaunchDaemons/dev.roost.pfctl.plist"
+)
+
+func runSetup(targetPort int) error {
+	fmt.Println("Setting up pf rules to forward port 80 -> 9080...")
+
+	// Check if running as root
+	if os.Geteuid() != 0 {
+		return fmt.Errorf("setup requires root privileges. Run with sudo")
+	}
+
+	// Create the pf anchor file
+	anchorContent := `# roost-dev port forwarding rules
+# Forward port 80 to 9080 for roost-dev
+rdr pass on lo0 inet proto tcp from any to any port 80 -> 127.0.0.1 port 9080
+`
+	fmt.Printf("Creating %s...\n", pfAnchorPath)
+	if err := os.WriteFile(pfAnchorPath, []byte(anchorContent), 0644); err != nil {
+		return fmt.Errorf("writing anchor file: %w", err)
+	}
+
+	// Check if pf.conf needs to be updated
+	pfConf, err := os.ReadFile("/etc/pf.conf")
+	if err != nil {
+		return fmt.Errorf("reading /etc/pf.conf: %w", err)
+	}
+
+	pfConfStr := string(pfConf)
+	needsUpdate := false
+
+	// Check if our anchor is already referenced
+	if !strings.Contains(pfConfStr, "roost-dev") {
+		needsUpdate = true
+
+		// Create backup before modifying
+		backupPath := "/etc/pf.conf.roost-dev-backup"
+		fmt.Printf("Backing up /etc/pf.conf to %s...\n", backupPath)
+		if err := os.WriteFile(backupPath, pfConf, 0644); err != nil {
+			return fmt.Errorf("creating backup: %w", err)
+		}
+
+		fmt.Println("Updating /etc/pf.conf to include roost-dev anchor...")
+
+		// Add anchor reference after the com.apple anchor line
+		lines := strings.Split(pfConfStr, "\n")
+		var newLines []string
+		for _, line := range lines {
+			newLines = append(newLines, line)
+			if strings.Contains(line, `rdr-anchor "com.apple/*"`) {
+				newLines = append(newLines, `rdr-anchor "roost-dev"`)
+			}
+			if strings.Contains(line, `load anchor "com.apple" from "/etc/pf.anchors/com.apple"`) {
+				newLines = append(newLines, `load anchor "roost-dev" from "/etc/pf.anchors/roost-dev"`)
+			}
+		}
+
+		if err := os.WriteFile("/etc/pf.conf", []byte(strings.Join(newLines, "\n")), 0644); err != nil {
+			return fmt.Errorf("writing /etc/pf.conf: %w", err)
+		}
+	}
+
+	// Create launchd plist for loading pf rules on boot
+	launchdContent := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>dev.roost.pfctl</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/sbin/pfctl</string>
+        <string>-e</string>
+        <string>-f</string>
+        <string>/etc/pf.conf</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>
+`
+	fmt.Printf("Creating %s...\n", launchdPlistPath)
+	if err := os.WriteFile(launchdPlistPath, []byte(launchdContent), 0644); err != nil {
+		return fmt.Errorf("writing launchd plist: %w", err)
+	}
+
+	// Enable pf and load the rules now
+	fmt.Println("Enabling pf and loading rules...")
+	cmd := exec.Command("/sbin/pfctl", "-e", "-f", "/etc/pf.conf")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		// pfctl returns error if pf is already enabled, which is fine
+		fmt.Println("Note: pf may already be enabled")
+	}
+
+	// Load the anchor specifically
+	cmd = exec.Command("/sbin/pfctl", "-a", "roost-dev", "-f", pfAnchorPath)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("loading anchor: %w", err)
+	}
+
+	fmt.Println()
+	fmt.Println("Setup complete!")
+	fmt.Println()
+	fmt.Println("Port 80 is now forwarded to port 9080.")
+	fmt.Println("You can now run roost-dev without sudo:")
+	fmt.Println()
+	fmt.Println("    roost-dev --http-port 9080")
+	fmt.Println()
+	fmt.Println("Then access your apps at http://appname.localhost")
+	if needsUpdate {
+		fmt.Println()
+		fmt.Println("Note: /etc/pf.conf was modified. Backup saved to /etc/pf.conf.roost-dev-backup")
+	}
+
+	return nil
+}
+
+func runCleanup() error {
+	fmt.Println("Removing roost-dev pf rules...")
+
+	// Check if running as root
+	if os.Geteuid() != 0 {
+		return fmt.Errorf("cleanup requires root privileges. Run with sudo")
+	}
+
+	// Flush our anchor
+	fmt.Println("Flushing roost-dev anchor...")
+	cmd := exec.Command("/sbin/pfctl", "-a", "roost-dev", "-F", "all")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Run() // Ignore errors if anchor doesn't exist
+
+	// Remove the anchor file
+	if _, err := os.Stat(pfAnchorPath); err == nil {
+		fmt.Printf("Removing %s...\n", pfAnchorPath)
+		os.Remove(pfAnchorPath)
+	}
+
+	// Remove the launchd plist
+	if _, err := os.Stat(launchdPlistPath); err == nil {
+		fmt.Printf("Removing %s...\n", launchdPlistPath)
+		// Unload the launchd job first
+		exec.Command("/bin/launchctl", "unload", launchdPlistPath).Run()
+		os.Remove(launchdPlistPath)
+	}
+
+	fmt.Println()
+	fmt.Println("Cleanup complete!")
+	fmt.Println()
+	fmt.Println("Note: /etc/pf.conf was not modified. To fully remove roost-dev:")
+	fmt.Println("  1. Remove the roost-dev anchor lines from /etc/pf.conf")
+	fmt.Println("  2. Or restore from backup: sudo cp /etc/pf.conf.roost-dev-backup /etc/pf.conf")
+
+	return nil
+}

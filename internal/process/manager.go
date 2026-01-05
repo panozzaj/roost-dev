@@ -1,0 +1,356 @@
+package process
+
+import (
+	"bufio"
+	"context"
+	"fmt"
+	"io"
+	"net"
+	"os"
+	"os/exec"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
+)
+
+// Process represents a running process
+type Process struct {
+	Name    string
+	Command string
+	Dir     string
+	Port    int
+	Env     map[string]string
+
+	cmd     *exec.Cmd
+	cancel  context.CancelFunc
+	logs    *LogBuffer
+	started time.Time
+	mu      sync.Mutex
+}
+
+// LogBuffer stores recent log output
+type LogBuffer struct {
+	mu    sync.RWMutex
+	lines []string
+	max   int
+}
+
+// NewLogBuffer creates a new log buffer
+func NewLogBuffer(maxLines int) *LogBuffer {
+	return &LogBuffer{
+		lines: make([]string, 0, maxLines),
+		max:   maxLines,
+	}
+}
+
+// Write implements io.Writer
+func (b *LogBuffer) Write(p []byte) (n int, err error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	lines := strings.Split(string(p), "\n")
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		b.lines = append(b.lines, line)
+		if len(b.lines) > b.max {
+			b.lines = b.lines[1:]
+		}
+	}
+	return len(p), nil
+}
+
+// Lines returns all stored log lines
+func (b *LogBuffer) Lines() []string {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	result := make([]string, len(b.lines))
+	copy(result, b.lines)
+	return result
+}
+
+// Clear clears the log buffer
+func (b *LogBuffer) Clear() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.lines = b.lines[:0]
+}
+
+// Manager manages running processes
+type Manager struct {
+	mu        sync.RWMutex
+	processes map[string]*Process
+	portStart int
+	portEnd   int
+	nextPort  int
+}
+
+// NewManager creates a new process manager
+func NewManager() *Manager {
+	return &Manager{
+		processes: make(map[string]*Process),
+		portStart: 50000,
+		portEnd:   60000,
+		nextPort:  50000,
+	}
+}
+
+// findFreePort finds an available port
+func (m *Manager) findFreePort() (int, error) {
+	for i := 0; i < m.portEnd-m.portStart; i++ {
+		port := m.nextPort
+		m.nextPort++
+		if m.nextPort >= m.portEnd {
+			m.nextPort = m.portStart
+		}
+
+		// Check if port is in use
+		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		if err == nil {
+			ln.Close()
+			return port, nil
+		}
+	}
+	return 0, fmt.Errorf("no free ports available in range %d-%d", m.portStart, m.portEnd)
+}
+
+// Start starts a process
+func (m *Manager) Start(name, command, dir string, env map[string]string) (*Process, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Check if already running
+	if p, exists := m.processes[name]; exists && p.IsRunning() {
+		return p, nil
+	}
+
+	// Find a free port
+	port, err := m.findFreePort()
+	if err != nil {
+		return nil, err
+	}
+
+	// Create process
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Build environment
+	procEnv := os.Environ()
+	procEnv = append(procEnv, fmt.Sprintf("PORT=%d", port))
+	for k, v := range env {
+		procEnv = append(procEnv, fmt.Sprintf("%s=%s", k, v))
+	}
+
+	// Parse command (handle shell execution)
+	// Use interactive login shell to ensure user's environment (rvm, rbenv, nvm, etc.) is loaded
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "/bin/bash"
+	}
+	cmd := exec.CommandContext(ctx, shell, "-i", "-l", "-c", command)
+	cmd.Dir = dir
+	cmd.Env = procEnv
+	// Run in own process group so we can kill the entire tree
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	// Set up logging
+	logs := NewLogBuffer(1000)
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("stdout pipe: %w", err)
+	}
+
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("stderr pipe: %w", err)
+	}
+
+	proc := &Process{
+		Name:    name,
+		Command: command,
+		Dir:     dir,
+		Port:    port,
+		Env:     env,
+		cmd:     cmd,
+		cancel:  cancel,
+		logs:    logs,
+		started: time.Now(),
+	}
+
+	// Start process
+	if err := cmd.Start(); err != nil {
+		cancel()
+		return nil, fmt.Errorf("start process: %w", err)
+	}
+
+	// Stream logs
+	go streamLogs(stdout, logs, name)
+	go streamLogs(stderr, logs, name)
+
+	// Monitor for exit
+	go func() {
+		cmd.Wait()
+		m.mu.Lock()
+		delete(m.processes, name)
+		m.mu.Unlock()
+	}()
+
+	m.processes[name] = proc
+
+	// Wait for port to be ready
+	if err := waitForPort(port, 30*time.Second); err != nil {
+		// Log warning but don't fail - process might take longer
+		logs.Write([]byte(fmt.Sprintf("[roost-dev] Warning: port %d not ready after 30s\n", port)))
+	}
+
+	return proc, nil
+}
+
+// streamLogs reads from a reader and writes to the log buffer
+func streamLogs(r io.Reader, logs *LogBuffer, name string) {
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		line := scanner.Text()
+		logs.Write([]byte(line + "\n"))
+		// Also print to stdout for debugging
+		fmt.Printf("[%s] %s\n", name, line)
+	}
+}
+
+// waitForPort waits for a port to become available
+func waitForPort(port int, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 100*time.Millisecond)
+		if err == nil {
+			conn.Close()
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return fmt.Errorf("timeout waiting for port %d", port)
+}
+
+// Stop stops a process
+func (m *Manager) Stop(name string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	proc, exists := m.processes[name]
+	if !exists {
+		return fmt.Errorf("process not found: %s", name)
+	}
+
+	proc.Kill()
+	delete(m.processes, name)
+	return nil
+}
+
+// Kill terminates the process and all its children
+func (p *Process) Kill() {
+	p.mu.Lock()
+	var pgid int
+	var hasPgid bool
+	if p.cmd != nil && p.cmd.Process != nil {
+		var err error
+		pgid, err = syscall.Getpgid(p.cmd.Process.Pid)
+		hasPgid = err == nil
+	}
+	p.mu.Unlock()
+
+	if hasPgid {
+		// Kill the entire process group
+		syscall.Kill(-pgid, syscall.SIGTERM)
+		// Give it a moment to clean up, then force kill
+		time.Sleep(100 * time.Millisecond)
+		syscall.Kill(-pgid, syscall.SIGKILL)
+	}
+	p.cancel()
+}
+
+// Restart restarts a process
+func (m *Manager) Restart(name string) (*Process, error) {
+	m.mu.RLock()
+	proc, exists := m.processes[name]
+	m.mu.RUnlock()
+
+	if !exists {
+		return nil, fmt.Errorf("process not found: %s", name)
+	}
+
+	// Capture config before stopping
+	command := proc.Command
+	dir := proc.Dir
+	env := proc.Env
+
+	// Stop
+	m.Stop(name)
+
+	// Wait a moment
+	time.Sleep(500 * time.Millisecond)
+
+	// Start again
+	return m.Start(name, command, dir, env)
+}
+
+// Get returns a process by name
+func (m *Manager) Get(name string) (*Process, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	proc, ok := m.processes[name]
+	return proc, ok
+}
+
+// All returns all running processes
+func (m *Manager) All() []*Process {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	procs := make([]*Process, 0, len(m.processes))
+	for _, proc := range m.processes {
+		procs = append(procs, proc)
+	}
+	return procs
+}
+
+// StopAll stops all running processes
+func (m *Manager) StopAll() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for name, proc := range m.processes {
+		proc.Kill()
+		delete(m.processes, name)
+	}
+}
+
+// IsRunning returns true if the process is still running
+func (p *Process) IsRunning() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.cmd == nil || p.cmd.Process == nil {
+		return false
+	}
+
+	// Check if process has exited
+	if p.cmd.ProcessState != nil {
+		return false
+	}
+
+	return true
+}
+
+// Logs returns the log buffer
+func (p *Process) Logs() *LogBuffer {
+	return p.logs
+}
+
+// Uptime returns how long the process has been running
+func (p *Process) Uptime() time.Duration {
+	return time.Since(p.started)
+}
