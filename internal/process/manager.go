@@ -8,6 +8,8 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -126,6 +128,11 @@ func (m *Manager) Start(name, command, dir string, env map[string]string) (*Proc
 		return p, nil
 	}
 
+	// Clean up stale Rails PID file if this looks like a Rails server
+	if strings.Contains(command, "rails server") || strings.Contains(command, "rails s") {
+		cleanupRailsPID(dir)
+	}
+
 	// Find a free port
 	port, err := m.findFreePort()
 	if err != nil {
@@ -218,6 +225,39 @@ func streamLogs(r io.Reader, logs *LogBuffer, name string) {
 		logs.Write([]byte(line + "\n"))
 		// Also print to stdout for debugging
 		fmt.Printf("[%s] %s\n", name, line)
+	}
+}
+
+// cleanupRailsPID removes stale Rails PID files
+func cleanupRailsPID(dir string) {
+	pidFile := filepath.Join(dir, "tmp", "pids", "server.pid")
+	data, err := os.ReadFile(pidFile)
+	if err != nil {
+		return // No PID file, nothing to clean up
+	}
+
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		// Invalid PID file, remove it
+		os.Remove(pidFile)
+		fmt.Printf("[roost-dev] Removed invalid PID file: %s\n", pidFile)
+		return
+	}
+
+	// Check if process is still running
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		os.Remove(pidFile)
+		fmt.Printf("[roost-dev] Removed stale PID file (pid %d): %s\n", pid, pidFile)
+		return
+	}
+
+	// On Unix, FindProcess always succeeds, so we need to send signal 0 to check
+	err = process.Signal(syscall.Signal(0))
+	if err != nil {
+		// Process doesn't exist, remove the stale PID file
+		os.Remove(pidFile)
+		fmt.Printf("[roost-dev] Removed stale PID file (pid %d not running): %s\n", pid, pidFile)
 	}
 }
 
