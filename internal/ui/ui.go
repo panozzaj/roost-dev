@@ -64,7 +64,6 @@ const indexHTML = `<!DOCTYPE html>
             background: #16213e;
             border-radius: 8px;
             margin-bottom: 12px;
-            overflow: hidden;
         }
         .app-header {
             display: flex;
