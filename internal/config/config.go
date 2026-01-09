@@ -249,6 +249,9 @@ func (s *AppStore) loadYAMLApp(name, path string) (*App, error) {
 		})
 	}
 
+	// Sort services so dependencies come first
+	services = topologicalSort(services)
+
 	return &App{
 		Name:        appName,
 		Description: yamlCfg.Description,
@@ -353,4 +356,62 @@ func (s *AppStore) Reload() error {
 	s.mu.Unlock()
 
 	return s.Load()
+}
+
+// topologicalSort orders services so dependencies come before dependents
+func topologicalSort(services []Service) []Service {
+	// Build lookup and in-degree count
+	byName := make(map[string]*Service)
+	inDegree := make(map[string]int)
+	for i := range services {
+		byName[services[i].Name] = &services[i]
+		inDegree[services[i].Name] = 0
+	}
+
+	// Count incoming edges (dependencies)
+	for _, svc := range services {
+		for _, dep := range svc.DependsOn {
+			if _, exists := byName[dep]; exists {
+				inDegree[svc.Name]++
+			}
+		}
+	}
+
+	// Start with services that have no dependencies
+	var queue []string
+	for name, degree := range inDegree {
+		if degree == 0 {
+			queue = append(queue, name)
+		}
+	}
+
+	// Sort queue for deterministic order
+	sort.Strings(queue)
+
+	var result []Service
+	for len(queue) > 0 {
+		// Take first from queue
+		name := queue[0]
+		queue = queue[1:]
+		result = append(result, *byName[name])
+
+		// Reduce in-degree for services that depend on this one
+		for _, svc := range services {
+			for _, dep := range svc.DependsOn {
+				if dep == name {
+					inDegree[svc.Name]--
+					if inDegree[svc.Name] == 0 {
+						queue = append(queue, svc.Name)
+						sort.Strings(queue)
+					}
+				}
+			}
+		}
+	}
+
+	// If we couldn't sort all (cycle), return original
+	if len(result) != len(services) {
+		return services
+	}
+	return result
 }

@@ -306,3 +306,161 @@ services:
 		}
 	})
 }
+
+func TestTopologicalSort(t *testing.T) {
+	t.Run("sorts services with dependencies after their dependencies", func(t *testing.T) {
+		services := []Service{
+			{Name: "web", DependsOn: []string{"api"}},
+			{Name: "api", DependsOn: nil},
+		}
+
+		sorted := topologicalSort(services)
+
+		if len(sorted) != 2 {
+			t.Fatalf("expected 2 services, got %d", len(sorted))
+		}
+		// api should come before web
+		if sorted[0].Name != "api" {
+			t.Errorf("expected api first, got %s", sorted[0].Name)
+		}
+		if sorted[1].Name != "web" {
+			t.Errorf("expected web second, got %s", sorted[1].Name)
+		}
+	})
+
+	t.Run("handles chain of dependencies", func(t *testing.T) {
+		services := []Service{
+			{Name: "c", DependsOn: []string{"b"}},
+			{Name: "a", DependsOn: nil},
+			{Name: "b", DependsOn: []string{"a"}},
+		}
+
+		sorted := topologicalSort(services)
+
+		// Should be: a, b, c
+		if sorted[0].Name != "a" {
+			t.Errorf("expected a first, got %s", sorted[0].Name)
+		}
+		if sorted[1].Name != "b" {
+			t.Errorf("expected b second, got %s", sorted[1].Name)
+		}
+		if sorted[2].Name != "c" {
+			t.Errorf("expected c third, got %s", sorted[2].Name)
+		}
+	})
+
+	t.Run("handles no dependencies", func(t *testing.T) {
+		services := []Service{
+			{Name: "web"},
+			{Name: "api"},
+		}
+
+		sorted := topologicalSort(services)
+
+		// Should be alphabetically sorted when no deps
+		if sorted[0].Name != "api" {
+			t.Errorf("expected api first (alphabetical), got %s", sorted[0].Name)
+		}
+	})
+
+	t.Run("handles cycle gracefully", func(t *testing.T) {
+		services := []Service{
+			{Name: "a", DependsOn: []string{"b"}},
+			{Name: "b", DependsOn: []string{"a"}},
+		}
+
+		sorted := topologicalSort(services)
+
+		// Should return original on cycle
+		if len(sorted) != 2 {
+			t.Errorf("expected 2 services returned on cycle, got %d", len(sorted))
+		}
+	})
+
+	t.Run("ignores unknown dependencies", func(t *testing.T) {
+		services := []Service{
+			{Name: "web", DependsOn: []string{"unknown"}},
+			{Name: "api"},
+		}
+
+		sorted := topologicalSort(services)
+
+		// Should still sort, ignoring unknown dep
+		if len(sorted) != 2 {
+			t.Fatalf("expected 2 services, got %d", len(sorted))
+		}
+	})
+}
+
+func TestDependsOnParsing(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &Config{Dir: tmpDir}
+	store := NewAppStore(cfg)
+
+	t.Run("parses depends_on from YAML", func(t *testing.T) {
+		yaml := `
+name: myapp
+root: /tmp/myapp
+services:
+  web:
+    cmd: npm start
+    depends_on: [api, worker]
+  api:
+    cmd: python server.py
+  worker:
+    cmd: sidekiq
+`
+		path := filepath.Join(tmpDir, "myapp.yml")
+		os.WriteFile(path, []byte(yaml), 0644)
+
+		app, err := store.loadYAMLApp("myapp.yml", path)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// Find web service
+		var webSvc *Service
+		for i := range app.Services {
+			if app.Services[i].Name == "web" {
+				webSvc = &app.Services[i]
+				break
+			}
+		}
+
+		if webSvc == nil {
+			t.Fatal("web service not found")
+		}
+
+		if len(webSvc.DependsOn) != 2 {
+			t.Errorf("expected 2 dependencies, got %d", len(webSvc.DependsOn))
+		}
+	})
+
+	t.Run("services are topologically sorted", func(t *testing.T) {
+		yaml := `
+name: depapp
+root: /tmp/depapp
+services:
+  web:
+    cmd: npm start
+    depends_on: [api]
+  api:
+    cmd: python server.py
+`
+		path := filepath.Join(tmpDir, "depapp.yml")
+		os.WriteFile(path, []byte(yaml), 0644)
+
+		app, err := store.loadYAMLApp("depapp.yml", path)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// api should come before web in the services slice
+		if app.Services[0].Name != "api" {
+			t.Errorf("expected api first after topological sort, got %s", app.Services[0].Name)
+		}
+		if app.Services[1].Name != "web" {
+			t.Errorf("expected web second after topological sort, got %s", app.Services[1].Name)
+		}
+	})
+}

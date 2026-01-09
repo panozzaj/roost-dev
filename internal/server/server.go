@@ -483,10 +483,19 @@ func (s *Server) ensureProcess(name, command, dir string, env map[string]string)
 
 // startByName starts a process by its name (e.g., "myapp" or "web-myapp" for services)
 func (s *Server) startByName(name string) {
-	// Try as a simple app first
+	// Try as an app first
 	if app, found := s.apps.Get(name); found {
-		if app.Type == config.AppTypeCommand {
-			s.procs.Start(app.Name, app.Command, app.Dir, nil)
+		switch app.Type {
+		case config.AppTypeCommand:
+			s.procs.Start(app.Name, app.Command, app.Dir, app.Env)
+		case config.AppTypeYAML:
+			// Start all services for multi-service app, respecting depends_on
+			for i := range app.Services {
+				svc := &app.Services[i]
+				s.ensureDependencies(app, svc)
+				procName := fmt.Sprintf("%s-%s", svc.Name, app.Name)
+				s.procs.Start(procName, svc.Command, svc.Dir, svc.Env)
+			}
 		}
 		return
 	}
@@ -538,16 +547,37 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	case "/api/stop":
 		name := r.URL.Query().Get("name")
 		if name != "" {
-			s.procs.Stop(name)
+			// Try direct process name first
+			if _, found := s.procs.Get(name); found {
+				s.procs.Stop(name)
+			} else if app, found := s.apps.Get(name); found && app.Type == config.AppTypeYAML {
+				// Stop all services for multi-service app
+				for _, svc := range app.Services {
+					procName := fmt.Sprintf("%s-%s", svc.Name, app.Name)
+					s.procs.Stop(procName)
+				}
+			}
 		}
 		w.WriteHeader(http.StatusOK)
 
 	case "/api/restart":
 		name := r.URL.Query().Get("name")
 		if name != "" {
-			proc, found := s.procs.Get(name)
-			if found {
+			// Try direct process name first
+			if proc, found := s.procs.Get(name); found {
 				s.procs.Restart(proc.Name)
+			} else if app, found := s.apps.Get(name); found && app.Type == config.AppTypeYAML {
+				// Restart all services for multi-service app
+				for i := range app.Services {
+					svc := &app.Services[i]
+					procName := fmt.Sprintf("%s-%s", svc.Name, app.Name)
+					if proc, found := s.procs.Get(procName); found {
+						s.procs.Restart(proc.Name)
+					} else {
+						s.ensureDependencies(app, svc)
+						s.procs.Start(procName, svc.Command, svc.Dir, svc.Env)
+					}
+				}
 			} else {
 				// Try to start it fresh
 				s.startByName(name)
