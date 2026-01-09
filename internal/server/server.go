@@ -633,6 +633,33 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// If this is a service, also check that dependencies are running
+		// Format: "service-appname" -> check dependencies of service
+		if status.Status == "running" {
+			if idx := strings.Index(name, "-"); idx != -1 {
+				serviceName := name[:idx]
+				appName := name[idx+1:]
+				if app, svc, found := s.apps.GetService(appName, serviceName); found {
+					for _, depName := range svc.DependsOn {
+						depProcName := fmt.Sprintf("%s-%s", depName, app.Name)
+						if depProc, found := s.procs.Get(depProcName); found {
+							if depProc.IsStarting() {
+								status.Status = "starting" // Dependency still starting
+								break
+							} else if depProc.HasFailed() {
+								status.Status = "failed"
+								status.Error = fmt.Sprintf("dependency %s failed: %s", depName, depProc.ExitError())
+								break
+							} else if !depProc.IsRunning() {
+								status.Status = "starting" // Dependency not ready
+								break
+							}
+						}
+					}
+				}
+			}
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(status)
 
