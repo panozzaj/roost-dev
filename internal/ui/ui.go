@@ -92,6 +92,49 @@ const indexHTML = `<!DOCTYPE html>
         .status-dot:hover {
             transform: scale(1.3);
         }
+        .status-dot-wrapper {
+            position: relative;
+            display: inline-block;
+        }
+        .status-menu {
+            position: absolute;
+            top: 100%%;
+            left: 50%%;
+            transform: translateX(-50%%);
+            background: #1f2937;
+            border: 1px solid #374151;
+            border-radius: 6px;
+            padding: 4px 0;
+            min-width: 80px;
+            z-index: 100;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            display: none;
+        }
+        .status-menu.visible {
+            display: block;
+        }
+        .status-menu button {
+            display: block;
+            width: 100%%;
+            padding: 6px 12px;
+            background: none;
+            border: none;
+            color: #d1d5db;
+            font-size: 12px;
+            text-align: left;
+            cursor: pointer;
+        }
+        .status-menu button:hover {
+            background: #374151;
+            color: #fff;
+        }
+        .status-menu button.danger {
+            color: #f87171;
+        }
+        .status-menu button.danger:hover {
+            background: #ef4444;
+            color: #fff;
+        }
         .status-dot.running {
             background: #22c55e;
         }
@@ -155,31 +198,6 @@ const indexHTML = `<!DOCTYPE html>
         .app-port {
             font-size: 14px;
             color: #9ca3af;
-        }
-        .app-actions {
-            display: flex;
-            gap: 8px;
-        }
-        .app-actions button {
-            background: transparent;
-            border: 1px solid #4b5563;
-            color: #d1d5db;
-            padding: 4px 12px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 12px;
-        }
-        .app-actions button:hover {
-            background: #374151;
-            color: #fff;
-        }
-        .app-actions button.stop {
-            border-color: #ef4444;
-            color: #ef4444;
-        }
-        .app-actions button.stop:hover {
-            background: #ef4444;
-            color: #fff;
         }
         .services {
             padding: 0 20px 16px 42px;
@@ -331,7 +349,13 @@ echo "npm run dev" > ~/.config/roost-dev/myapp
                                 return ` + "`" + `
                                 <div class="service">
                                     <div class="service-info">
-                                        <div class="status-dot ${svcStatus}" onclick="event.stopPropagation(); toggleProcess('${svcName}', '${svcStatus}', event)" title="${svcStatus === 'running' ? 'Click to stop' : svcStatus === 'failed' ? 'Click to restart' : 'Click to start'}"></div>
+                                        <div class="status-dot-wrapper">
+                                            <div class="status-dot ${svcStatus}" onclick="event.stopPropagation(); handleDotClick('${svcName}', '${svcStatus}', event)"></div>
+                                            ${svcStatus === 'running' ? ` + "`" + `<div class="status-menu" id="menu-${svcName}">
+                                                <button onclick="event.stopPropagation(); doRestart('${svcName}', event)">Restart</button>
+                                                <button class="danger" onclick="event.stopPropagation(); doStop('${svcName}')">Stop</button>
+                                            </div>` + "`" + ` : ''}
+                                        </div>
                                         <span class="service-name">${svc.name}</span>
                                         ${svc.port ? ` + "`" + `<span class="app-port">:${svc.port}</span>` + "`" + ` : ''}
                                         ${svc.error ? ` + "`" + `<span class="app-error">${svc.error}</span>` + "`" + ` : ''}
@@ -349,7 +373,13 @@ echo "npm run dev" > ~/.config/roost-dev/myapp
                     <div class="app" data-name="${app.name}">
                         <div class="app-header" onclick="toggleLogs('${app.name}')">
                             <div class="app-info">
-                                <div class="status-dot ${statusClass}" onclick="event.stopPropagation(); toggleProcess('${app.name}', '${statusClass}', event)" title="${statusClass === 'running' ? 'Click to stop' : statusClass === 'failed' ? 'Click to restart' : 'Click to start'}"></div>
+                                <div class="status-dot-wrapper">
+                                    <div class="status-dot ${statusClass}" onclick="event.stopPropagation(); handleDotClick('${app.name}', '${statusClass}', event)"></div>
+                                    ${statusClass === 'running' ? ` + "`" + `<div class="status-menu" id="menu-${app.name}">
+                                        <button onclick="event.stopPropagation(); doRestart('${app.name}', event)">Restart</button>
+                                        <button class="danger" onclick="event.stopPropagation(); doStop('${app.name}')">Stop</button>
+                                    </div>` + "`" + ` : ''}
+                                </div>
                                 <span class="app-name">${displayName}</span>
                                 ${app.description ? ` + "`" + `<span class="app-description">(${app.name})</span>` + "`" + ` : ''}
                                 <span class="app-type">${app.type}</span>
@@ -360,12 +390,6 @@ echo "npm run dev" > ~/.config/roost-dev/myapp
                                 <a class="app-url external-link" href="${app.url}" target="_blank" onclick="event.stopPropagation()">
                                     ${app.name}.${TLD} ${externalLinkIcon}
                                 </a>
-                                <div class="app-actions">
-                                    ${app.running ? ` + "`" + `
-                                        <button onclick="event.stopPropagation(); restart('${app.name}')">restart</button>
-                                        <button class="stop" onclick="event.stopPropagation(); stop('${app.name}')">stop</button>
-                                    ` + "`" + ` : ''}
-                                </div>
                             </div>
                         </div>
                         ${servicesHTML}
@@ -426,21 +450,50 @@ echo "npm run dev" > ~/.config/roost-dev/myapp
             fetchStatus();
         }
 
-        async function toggleProcess(name, status, event) {
-            // Find the clicked dot and show starting animation
-            const dot = event ? event.target : null;
-            if (dot && (status === 'idle' || status === 'failed')) {
-                dot.className = 'status-dot starting';
-            }
+        function closeAllMenus() {
+            document.querySelectorAll('.status-menu').forEach(m => m.classList.remove('visible'));
+        }
+
+        function handleDotClick(name, status, event) {
+            event.stopPropagation();
+            closeAllMenus();
 
             if (status === 'running') {
-                await stop(name);
-            } else if (status === 'failed') {
-                await restart(name);
+                // Show dropdown menu
+                const menu = document.getElementById('menu-' + name);
+                if (menu) {
+                    menu.classList.add('visible');
+                }
             } else {
-                await start(name);
+                // Start or restart directly with animation
+                const dot = event.target;
+                dot.className = 'status-dot starting';
+                if (status === 'failed') {
+                    restart(name);
+                } else {
+                    start(name);
+                }
             }
         }
+
+        async function doRestart(name, event) {
+            closeAllMenus();
+            // Find the dot and show starting animation
+            const wrapper = event.target.closest('.status-dot-wrapper');
+            const dot = wrapper ? wrapper.querySelector('.status-dot') : null;
+            if (dot) {
+                dot.className = 'status-dot starting';
+            }
+            await restart(name);
+        }
+
+        async function doStop(name) {
+            closeAllMenus();
+            await stop(name);
+        }
+
+        // Close menus when clicking outside
+        document.addEventListener('click', closeAllMenus);
 
         async function reload() {
             await fetch('/api/reload');
