@@ -15,33 +15,34 @@ import (
 // Config holds the global configuration
 type Config struct {
 	Dir       string
-	HTTPPort  int  // Port to listen on
+	HTTPPort  int // Port to listen on
 	HTTPSPort int
-	URLPort   int  // Port to use in generated URLs (for pf forwarding)
+	URLPort   int // Port to use in generated URLs (for pf forwarding)
 	TLD       string
 }
 
 // App represents a configured application
 type App struct {
 	Name        string
-	Description string   // Optional display name/description
+	Description string // Optional display name/description
 	Type        AppType
-	Port        int      // For static port proxy
-	Command     string   // For command-based apps
-	Dir         string   // Working directory
-	FilePath    string   // For static file serving
+	Port        int       // For static port proxy
+	Command     string    // For command-based apps
+	Dir         string    // Working directory
+	FilePath    string    // For static file serving
 	Services    []Service // For multi-service YAML configs
 	Env         map[string]string
 }
 
 // Service represents a service within a multi-service app
 type Service struct {
-	Name    string
-	Dir     string
-	Command string
-	Port    int // Assigned dynamically
-	Env     map[string]string
-	Default bool // If true, this service handles requests to the base app URL
+	Name      string
+	Dir       string
+	Command   string
+	Port      int // Assigned dynamically
+	Env       map[string]string
+	Default   bool     // If true, this service handles requests to the base app URL
+	DependsOn []string // Names of services that must start first
 }
 
 // AppType indicates how to handle the app
@@ -49,9 +50,9 @@ type AppType int
 
 const (
 	AppTypePort    AppType = iota // Proxy to fixed port
-	AppTypeCommand               // Run command with dynamic port
-	AppTypeStatic                // Serve static files
-	AppTypeYAML                  // Multi-service YAML config
+	AppTypeCommand                // Run command with dynamic port
+	AppTypeStatic                 // Serve static files
+	AppTypeYAML                   // Multi-service YAML config
 )
 
 // AppStore manages loaded app configurations
@@ -169,16 +170,17 @@ func (s *AppStore) loadYAMLApp(name, path string) (*App, error) {
 	}
 
 	var yamlCfg struct {
-		Name        string `yaml:"name"`
-		Description string `yaml:"description"`
-		Root        string `yaml:"root"`
-		Command     string `yaml:"cmd"` // For single-service shorthand
+		Name        string            `yaml:"name"`
+		Description string            `yaml:"description"`
+		Root        string            `yaml:"root"`
+		Command     string            `yaml:"cmd"` // For single-service shorthand
 		Env         map[string]string `yaml:"env"` // For single-service shorthand
 		Services    map[string]struct {
-			Dir     string            `yaml:"dir"`
-			Command string            `yaml:"cmd"`
-			Env     map[string]string `yaml:"env"`
-			Default bool              `yaml:"default"`
+			Dir       string            `yaml:"dir"`
+			Command   string            `yaml:"cmd"`
+			Env       map[string]string `yaml:"env"`
+			Default   bool              `yaml:"default"`
+			DependsOn []string          `yaml:"depends_on"`
 		} `yaml:"services"`
 	}
 
@@ -238,11 +240,12 @@ func (s *AppStore) loadYAMLApp(name, path string) (*App, error) {
 		}
 
 		services = append(services, Service{
-			Name:    svcName,
-			Dir:     svcDir,
-			Command: svcCfg.Command,
-			Env:     svcCfg.Env,
-			Default: svcCfg.Default,
+			Name:      svcName,
+			Dir:       svcDir,
+			Command:   svcCfg.Command,
+			Env:       svcCfg.Env,
+			Default:   svcCfg.Default,
+			DependsOn: svcCfg.DependsOn,
 		})
 	}
 

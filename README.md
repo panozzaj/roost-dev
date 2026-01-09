@@ -70,11 +70,14 @@ services:
     cmd: bin/rails server -p $PORT
   frontend:
     cmd: npm start
+    depends_on: [backend]
     env:
       API_URL: http://backend-myproject.localhost
 ```
 
 Access at `http://frontend-myproject.localhost` and `http://backend-myproject.localhost`.
+
+Services with `depends_on` will automatically start their dependencies first.
 
 ## Subdomains
 

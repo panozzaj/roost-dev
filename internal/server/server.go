@@ -412,8 +412,37 @@ func (s *Server) handleApp(w http.ResponseWriter, r *http.Request, app *config.A
 	}
 }
 
+// findService finds a service by name within an app
+func (s *Server) findService(app *config.App, name string) *config.Service {
+	for i := range app.Services {
+		if app.Services[i].Name == name {
+			return &app.Services[i]
+		}
+	}
+	return nil
+}
+
+// ensureDependencies starts any dependencies that aren't already running
+func (s *Server) ensureDependencies(app *config.App, svc *config.Service) {
+	for _, depName := range svc.DependsOn {
+		dep := s.findService(app, depName)
+		if dep == nil {
+			continue // Skip unknown dependencies
+		}
+		procName := fmt.Sprintf("%s-%s", dep.Name, app.Name)
+		proc, found := s.procs.Get(procName)
+		if !found || (!proc.IsRunning() && !proc.IsStarting()) {
+			// Start the dependency
+			s.procs.StartAsync(procName, dep.Command, dep.Dir, dep.Env)
+		}
+	}
+}
+
 // handleService handles a request for a service within a multi-service app
 func (s *Server) handleService(w http.ResponseWriter, r *http.Request, app *config.App, svc *config.Service) {
+	// Start dependencies first
+	s.ensureDependencies(app, svc)
+
 	procName := fmt.Sprintf("%s-%s", svc.Name, app.Name)
 
 	// Check process status and serve appropriately
