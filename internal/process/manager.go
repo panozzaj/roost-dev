@@ -28,6 +28,7 @@ type Process struct {
 	cancel    context.CancelFunc
 	logs      *LogBuffer
 	started   time.Time
+	starting  bool // true while waiting for port to be ready
 	failed    bool
 	exitError string
 	mu        sync.Mutex
@@ -254,6 +255,7 @@ func (m *Manager) Start(name, command, dir string, env map[string]string) (*Proc
 		// They'll be replaced if started again
 	}()
 
+	proc.starting = true
 	m.processes[name] = proc
 
 	// Release lock BEFORE waiting for port - this can take 30s and would block all requests
@@ -264,6 +266,151 @@ func (m *Manager) Start(name, command, dir string, env map[string]string) (*Proc
 		// Log warning but don't fail - process might take longer
 		logs.Write([]byte(fmt.Sprintf("[roost-dev] Warning: port %d not ready after 30s\n", port)))
 	}
+
+	proc.mu.Lock()
+	proc.starting = false
+	proc.mu.Unlock()
+
+	return proc, nil
+}
+
+// StartAsync starts a process without waiting for the port to be ready.
+// Returns immediately after the process is spawned.
+func (m *Manager) StartAsync(name, command, dir string, env map[string]string) (*Process, error) {
+	m.mu.Lock()
+
+	// Check if already running or starting
+	if p, exists := m.processes[name]; exists && (p.IsRunning() || p.IsStarting()) {
+		m.mu.Unlock()
+		return p, nil
+	}
+
+	// Clean up stale Rails PID file if this looks like a Rails server
+	if strings.Contains(command, "rails server") || strings.Contains(command, "rails s") {
+		cleanupRailsPID(dir)
+	}
+
+	// Find a free port
+	port, err := m.findFreePort()
+	if err != nil {
+		m.mu.Unlock()
+		return nil, err
+	}
+
+	// Create process
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Build environment
+	procEnv := os.Environ()
+	procEnv = append(procEnv, fmt.Sprintf("PORT=%d", port))
+	procEnv = append(procEnv, "FORCE_COLOR=1")
+	portStr := fmt.Sprintf("%d", port)
+	for k, v := range env {
+		// Expand $PORT in env values
+		v = strings.ReplaceAll(v, "$PORT", portStr)
+		procEnv = append(procEnv, fmt.Sprintf("%s=%s", k, v))
+	}
+
+	// Parse command (handle shell execution)
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "/bin/bash"
+	}
+	cmd := exec.CommandContext(ctx, shell, "-i", "-l", "-c", command)
+	cmd.Dir = dir
+	cmd.Env = procEnv
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	// Set up logging
+	logs := NewLogBuffer(1000)
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		cancel()
+		m.mu.Unlock()
+		return nil, fmt.Errorf("stdout pipe: %w", err)
+	}
+
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		cancel()
+		m.mu.Unlock()
+		return nil, fmt.Errorf("stderr pipe: %w", err)
+	}
+
+	proc := &Process{
+		Name:    name,
+		Command: command,
+		Dir:     dir,
+		Port:    port,
+		Env:     env,
+		cmd:     cmd,
+		cancel:  cancel,
+		logs:    logs,
+		started: time.Now(),
+	}
+
+	// Start process
+	if err := cmd.Start(); err != nil {
+		cancel()
+		m.mu.Unlock()
+		return nil, fmt.Errorf("start process: %w", err)
+	}
+
+	// Stream logs
+	go streamLogs(stdout, logs, name)
+	go streamLogs(stderr, logs, name)
+
+	// Monitor for exit
+	go func() {
+		err := cmd.Wait()
+		proc.mu.Lock()
+		if err != nil {
+			proc.failed = true
+			lines := proc.logs.Lines()
+			var lastLines string
+			if len(lines) > 0 {
+				start := len(lines) - 3
+				if start < 0 {
+					start = 0
+				}
+				for _, l := range lines[start:] {
+					if !strings.HasPrefix(l, "[roost-dev]") {
+						if lastLines != "" {
+							lastLines += " | "
+						}
+						if len(l) > 80 {
+							l = l[:77] + "..."
+						}
+						lastLines += l
+					}
+				}
+			}
+			if lastLines != "" {
+				proc.exitError = lastLines
+			} else if exitErr, ok := err.(*exec.ExitError); ok {
+				proc.exitError = fmt.Sprintf("exit code %d", exitErr.ExitCode())
+			} else {
+				proc.exitError = err.Error()
+			}
+			proc.logs.Write([]byte(fmt.Sprintf("[roost-dev] Process exited: %s\n", proc.exitError)))
+		}
+		proc.mu.Unlock()
+	}()
+
+	proc.starting = true
+	m.processes[name] = proc
+	m.mu.Unlock()
+
+	// Wait for port in background
+	go func() {
+		if err := waitForPort(port, 30*time.Second); err != nil {
+			logs.Write([]byte(fmt.Sprintf("[roost-dev] Warning: port %d not ready after 30s\n", port)))
+		}
+		proc.mu.Lock()
+		proc.starting = false
+		proc.mu.Unlock()
+	}()
 
 	return proc, nil
 }
@@ -460,6 +607,13 @@ func (p *Process) HasFailed() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.failed
+}
+
+// IsStarting returns true if the process is starting but port not yet ready
+func (p *Process) IsStarting() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.starting && !p.failed
 }
 
 // ExitError returns the exit error message if the process failed

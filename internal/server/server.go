@@ -39,6 +39,195 @@ func errorPageWithLogs(msg string, logs []string) string {
 	return result
 }
 
+func interstitialPage(appName, tld string, failed bool, errorMsg string) string {
+	statusText := "Starting"
+	if failed {
+		statusText = "Failed to start"
+	}
+	return fmt.Sprintf(`<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>%s %s</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            margin: 0;
+            padding: 40px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            text-align: center;
+            max-width: 700px;
+            width: 100%%;
+        }
+        .logo {
+            font-family: "SF Mono", Monaco, monospace;
+            font-size: 12px;
+            white-space: pre;
+            color: #6b7280;
+            margin-bottom: 40px;
+        }
+        h1 {
+            font-size: 24px;
+            margin: 0 0 16px 0;
+            color: #fff;
+        }
+        .status {
+            font-size: 16px;
+            color: #9ca3af;
+            margin-bottom: 24px;
+        }
+        .status.error {
+            color: #f87171;
+        }
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #374151;
+            border-top-color: #22c55e;
+            border-radius: 50%%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 24px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .logs {
+            background: #0f172a;
+            border: 1px solid #374151;
+            border-radius: 8px;
+            padding: 16px;
+            text-align: left;
+            max-height: 350px;
+            overflow-y: auto;
+            margin-bottom: 24px;
+        }
+        .logs-title {
+            color: #9ca3af;
+            font-size: 12px;
+            margin-bottom: 8px;
+        }
+        .logs-content {
+            font-family: "SF Mono", Monaco, monospace;
+            font-size: 12px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            word-break: break-all;
+            color: #d1d5db;
+            min-height: 100px;
+        }
+        .logs-empty {
+            color: #6b7280;
+            font-style: italic;
+        }
+        .retry-btn {
+            background: #22c55e;
+            color: #fff;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            display: none;
+        }
+        .retry-btn:hover {
+            background: #16a34a;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">%s</div>
+        <h1>%s</h1>
+        <div class="status" id="status">%s...</div>
+        <div class="spinner" id="spinner"></div>
+        <div class="logs" id="logs">
+            <div class="logs-title">Logs</div>
+            <div class="logs-content" id="logs-content"><span class="logs-empty">Waiting for output...</span></div>
+        </div>
+        <button class="retry-btn" id="retry-btn" onclick="location.reload()">Retry</button>
+    </div>
+    <script>
+        const appName = '%s';
+        const tld = '%s';
+        let failed = %t;
+        let lastLogCount = 0;
+
+        async function poll() {
+            try {
+                // Fetch status and logs in parallel
+                const [statusRes, logsRes] = await Promise.all([
+                    fetch('http://roost-dev.' + tld + '/api/app-status?name=' + encodeURIComponent(appName)),
+                    fetch('http://roost-dev.' + tld + '/api/logs?name=' + encodeURIComponent(appName))
+                ]);
+                const status = await statusRes.json();
+                const lines = await logsRes.json();
+
+                // Update logs
+                if (lines && lines.length > 0) {
+                    const content = document.getElementById('logs-content');
+                    content.textContent = lines.join('\n');
+                    // Auto-scroll if new lines
+                    if (lines.length > lastLogCount) {
+                        const logsDiv = document.getElementById('logs');
+                        logsDiv.scrollTop = logsDiv.scrollHeight;
+                        lastLogCount = lines.length;
+                    }
+                }
+
+                // Check status
+                if (status.status === 'running') {
+                    document.getElementById('status').textContent = 'Ready! Redirecting...';
+                    document.getElementById('spinner').style.borderTopColor = '#22c55e';
+                    setTimeout(() => location.reload(), 300);
+                    return;
+                } else if (status.status === 'failed') {
+                    showError(status.error);
+                    return;
+                }
+
+                // Still starting, poll again
+                setTimeout(poll, 500);
+            } catch (e) {
+                console.error('Poll failed:', e);
+                setTimeout(poll, 1000);
+            }
+        }
+
+        function showError(msg) {
+            document.getElementById('spinner').style.display = 'none';
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = 'Failed to start' + (msg ? ': ' + msg : '');
+            statusEl.classList.add('error');
+            document.getElementById('retry-btn').style.display = 'inline-block';
+        }
+
+        if (failed) {
+            showError('%s');
+            // Still fetch logs once for failed state
+            fetch('http://roost-dev.' + tld + '/api/logs?name=' + encodeURIComponent(appName))
+                .then(r => r.json())
+                .then(lines => {
+                    if (lines && lines.length > 0) {
+                        document.getElementById('logs-content').textContent = lines.join('\n');
+                    }
+                });
+        } else {
+            poll();
+        }
+    </script>
+</body>
+</html>`, statusText, appName, asciiLogo, appName, statusText, appName, tld, failed, errorMsg)
+}
+
 // Server is the main roost-dev server
 type Server struct {
 	cfg     *config.Config
@@ -169,17 +358,29 @@ func (s *Server) handleApp(w http.ResponseWriter, r *http.Request, app *config.A
 		proxy.NewReverseProxy(app.Port).ServeHTTP(w, r)
 
 	case config.AppTypeCommand:
-		// Start process if needed, then proxy
-		proc, err := s.ensureProcess(app.Name, app.Command, app.Dir, app.Env)
-		if err != nil {
-			var logs []string
-			if proc != nil {
-				logs = proc.Logs().Lines()
-			}
-			http.Error(w, errorPageWithLogs(fmt.Sprintf("Failed to start %s: %v", app.Name, err), logs), http.StatusInternalServerError)
+		// Check process status and serve appropriately
+		proc, found := s.procs.Get(app.Name)
+		if found && proc.IsRunning() {
+			// Already running - proxy directly
+			proxy.NewReverseProxy(proc.Port).ServeHTTP(w, r)
 			return
 		}
-		proxy.NewReverseProxy(proc.Port).ServeHTTP(w, r)
+		if found && proc.HasFailed() {
+			// Failed - show interstitial with error
+			w.Header().Set("Content-Type", "text/html")
+			w.Write([]byte(interstitialPage(app.Name, s.cfg.TLD, true, proc.ExitError())))
+			return
+		}
+		if found && proc.IsStarting() {
+			// Starting - show interstitial
+			w.Header().Set("Content-Type", "text/html")
+			w.Write([]byte(interstitialPage(app.Name, s.cfg.TLD, false, "")))
+			return
+		}
+		// Idle - start async and show interstitial
+		s.procs.StartAsync(app.Name, app.Command, app.Dir, app.Env)
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte(interstitialPage(app.Name, s.cfg.TLD, false, "")))
 
 	case config.AppTypeStatic:
 		// Serve static files
@@ -215,17 +416,29 @@ func (s *Server) handleApp(w http.ResponseWriter, r *http.Request, app *config.A
 func (s *Server) handleService(w http.ResponseWriter, r *http.Request, app *config.App, svc *config.Service) {
 	procName := fmt.Sprintf("%s-%s", svc.Name, app.Name)
 
-	proc, err := s.ensureProcess(procName, svc.Command, svc.Dir, svc.Env)
-	if err != nil {
-		var logs []string
-		if proc != nil {
-			logs = proc.Logs().Lines()
-		}
-		http.Error(w, errorPageWithLogs(fmt.Sprintf("Failed to start service %s: %v", procName, err), logs), http.StatusInternalServerError)
+	// Check process status and serve appropriately
+	proc, found := s.procs.Get(procName)
+	if found && proc.IsRunning() {
+		// Already running - proxy directly
+		proxy.NewReverseProxy(proc.Port).ServeHTTP(w, r)
 		return
 	}
-
-	proxy.NewReverseProxy(proc.Port).ServeHTTP(w, r)
+	if found && proc.HasFailed() {
+		// Failed - show interstitial with error
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte(interstitialPage(procName, s.cfg.TLD, true, proc.ExitError())))
+		return
+	}
+	if found && proc.IsStarting() {
+		// Starting - show interstitial
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte(interstitialPage(procName, s.cfg.TLD, false, "")))
+		return
+	}
+	// Idle - start async and show interstitial
+	s.procs.StartAsync(procName, svc.Command, svc.Dir, svc.Env)
+	w.Header().Set("Content-Type", "text/html")
+	w.Write([]byte(interstitialPage(procName, s.cfg.TLD, false, "")))
 }
 
 // ensureProcess ensures a process is running
@@ -270,6 +483,17 @@ func (s *Server) startByName(name string) {
 
 // handleDashboard serves the web UI
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
+	// Add CORS headers for API endpoints (needed for interstitial page cross-origin fetches)
+	if strings.HasPrefix(r.URL.Path, "/api/") {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+	}
+
 	switch r.URL.Path {
 	case "/":
 		ui.ServeIndex(w, r, s.cfg.TLD, s.cfg.URLPort)
@@ -332,6 +556,28 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(allLogs)
+
+	case "/api/app-status":
+		name := r.URL.Query().Get("name")
+		type singleAppStatus struct {
+			Status string `json:"status"` // idle, starting, running, failed
+			Error  string `json:"error,omitempty"`
+		}
+
+		status := singleAppStatus{Status: "idle"}
+		if proc, found := s.procs.Get(name); found {
+			if proc.IsRunning() {
+				status.Status = "running"
+			} else if proc.HasFailed() {
+				status.Status = "failed"
+				status.Error = proc.ExitError()
+			} else if proc.IsStarting() {
+				status.Status = "starting"
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(status)
 
 	default:
 		http.NotFound(w, r)
