@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -27,6 +28,29 @@ var (
 )
 
 func main() {
+	// Check for subcommands first (anything that doesn't start with -)
+	if len(os.Args) >= 2 && !strings.HasPrefix(os.Args[1], "-") {
+		switch os.Args[1] {
+		case "start", "stop", "restart":
+			if len(os.Args) < 3 {
+				fmt.Fprintf(os.Stderr, "Usage: roost-dev %s <app-name>\n", os.Args[1])
+				os.Exit(1)
+			}
+			if err := runCommand(os.Args[1], os.Args[2]); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			os.Exit(0)
+		case "help":
+			printUsage()
+			os.Exit(0)
+		default:
+			fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", os.Args[1])
+			printUsage()
+			os.Exit(1)
+		}
+	}
+
 	// Flags
 	var (
 		configDir     string
@@ -174,6 +198,12 @@ func printUsage() {
 
 USAGE:
     roost-dev [OPTIONS]
+    roost-dev <command> <app-name>
+
+COMMANDS:
+    start <app>     Start an app
+    stop <app>      Stop an app
+    restart <app>   Restart an app
 
 OPTIONS:
     --dir <path>          Configuration directory (default: ~/.config/roost-dev)
@@ -414,6 +444,31 @@ rdr pass on lo0 inet proto tcp from any to any port 80 -> 127.0.0.1 port 9280
 		fmt.Println("Note: /etc/pf.conf was modified. Backup saved to /etc/pf.conf.roost-dev-backup")
 	}
 
+	return nil
+}
+
+func runCommand(cmd, appName string) error {
+	// Load config to get TLD
+	homeDir, _ := os.UserHomeDir()
+	configDir := filepath.Join(homeDir, ".config", "roost-dev")
+	globalCfg, err := loadGlobalConfig(configDir)
+	if err != nil {
+		globalCfg = &GlobalConfig{TLD: "localhost"}
+	}
+
+	// Make request to roost-dev API
+	url := fmt.Sprintf("http://roost-dev.%s/api/%s?name=%s", globalCfg.TLD, cmd, appName)
+	resp, err := http.Get(url)
+	if err != nil {
+		return fmt.Errorf("failed to connect to roost-dev: %v (is it running?)", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("request failed with status %d", resp.StatusCode)
+	}
+
+	fmt.Printf("%s: %s\n", cmd, appName)
 	return nil
 }
 
