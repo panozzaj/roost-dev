@@ -396,6 +396,7 @@ echo "npm run dev" > ~/.config/roost-dev/myapp
                         <div class="logs-panel" id="logs-${app.name}">
                             <div class="logs-header">
                                 <span class="logs-title">Logs</span>
+                                <button onclick="copyLogs('${app.name}', event)">Copy</button>
                                 <button onclick="clearLogs('${app.name}')">Clear</button>
                             </div>
                             <div class="logs-content" id="logs-content-${app.name}"></div>
@@ -433,6 +434,17 @@ echo "npm run dev" > ~/.config/roost-dev/myapp
         function clearLogs(name) {
             const content = document.getElementById('logs-content-' + name);
             content.textContent = '';
+        }
+
+        async function copyLogs(name, event) {
+            const content = document.getElementById('logs-content-' + name);
+            try {
+                await navigator.clipboard.writeText(content.textContent);
+                event.target.textContent = 'Copied!';
+                setTimeout(() => event.target.textContent = 'Copy', 1500);
+            } catch (err) {
+                console.error('Failed to copy:', err);
+            }
         }
 
         async function stop(name) {
