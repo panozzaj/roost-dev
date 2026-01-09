@@ -679,13 +679,7 @@ func (s *Server) handleAPIStatus(w http.ResponseWriter, r *http.Request) {
 
 		case config.AppTypeYAML:
 			as.Type = "multi-service"
-			// Use default service URL if one exists
-			for _, svc := range app.Services {
-				if svc.Default {
-					as.URL = baseURL(fmt.Sprintf("%s-%s", svc.Name, app.Name))
-					break
-				}
-			}
+			// Keep base URL (app.test) - default service routes there automatically
 			for _, svc := range app.Services {
 				ss := serviceStatus{Name: svc.Name}
 				procName := fmt.Sprintf("%s-%s", svc.Name, app.Name)
