@@ -128,18 +128,36 @@ func interstitialPage(appName, tld string, failed bool, errorMsg string) string 
             color: #6b7280;
             font-style: italic;
         }
-        .retry-btn {
-            background: #22c55e;
+        .btn {
+            background: #374151;
             color: #fff;
             border: none;
             padding: 10px 24px;
             border-radius: 6px;
             font-size: 14px;
             cursor: pointer;
+        }
+        .btn:hover {
+            background: #4b5563;
+        }
+        .btn-primary {
+            background: #22c55e;
+        }
+        .btn-primary:hover {
+            background: #16a34a;
+        }
+        .retry-btn {
             display: none;
         }
-        .retry-btn:hover {
-            background: #16a34a;
+        .logs-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .copy-btn {
+            padding: 4px 12px;
+            font-size: 12px;
         }
     </style>
 </head>
@@ -150,10 +168,13 @@ func interstitialPage(appName, tld string, failed bool, errorMsg string) string 
         <div class="status" id="status">%s...</div>
         <div class="spinner" id="spinner"></div>
         <div class="logs" id="logs">
-            <div class="logs-title">Logs</div>
+            <div class="logs-header">
+                <div class="logs-title">Logs</div>
+                <button class="btn copy-btn" id="copy-btn" onclick="copyLogs()">Copy</button>
+            </div>
             <div class="logs-content" id="logs-content"><span class="logs-empty">Waiting for output...</span></div>
         </div>
-        <button class="retry-btn" id="retry-btn" onclick="location.reload()">Retry</button>
+        <button class="btn btn-primary retry-btn" id="retry-btn" onclick="restartAndRetry()">Restart</button>
     </div>
     <script>
         const appName = '%s';
@@ -218,6 +239,33 @@ func interstitialPage(appName, tld string, failed bool, errorMsg string) string 
             statusEl.textContent = 'Failed to start' + (msg ? ': ' + msg : '');
             statusEl.classList.add('error');
             document.getElementById('retry-btn').style.display = 'inline-block';
+        }
+
+        async function copyLogs() {
+            const content = document.getElementById('logs-content');
+            const btn = document.getElementById('copy-btn');
+            try {
+                await navigator.clipboard.writeText(content.textContent);
+                btn.textContent = 'Copied!';
+                setTimeout(() => btn.textContent = 'Copy', 1500);
+            } catch (err) {
+                console.error('Failed to copy:', err);
+            }
+        }
+
+        async function restartAndRetry() {
+            const btn = document.getElementById('retry-btn');
+            btn.textContent = 'Restarting...';
+            btn.disabled = true;
+            try {
+                await fetch('http://roost-dev.' + tld + '/api/restart?name=' + encodeURIComponent(appName));
+                // Brief delay then reload to see interstitial
+                setTimeout(() => location.reload(), 500);
+            } catch (e) {
+                btn.textContent = 'Restart';
+                btn.disabled = false;
+                console.error('Restart failed:', e);
+            }
         }
 
         if (failed) {
