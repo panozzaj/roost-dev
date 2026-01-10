@@ -20,9 +20,11 @@ func slugify(name string) string {
 }
 
 const asciiLogo = `
-    ___  ___  ___  ____ _____      ___  ____ _  _
-    |__| |  | |  | [__   |   ____ |  \ |___ |  |
-    |  \ |__| |__| ___]  |        |__/ |___  \/
+                 __            __
+   _________  ____  _____/ /_      ____/ /__ _   __
+  / ___/ __ \/ __ \/ ___/ __/_____/ __  / _ \ | / /
+ / /  / /_/ / /_/ (__  ) /_/_____/ /_/ /  __/ |/ /
+/_/   \____/\____/____/\__/      \__,_/\___/|___/
 `
 
 func errorPage(msg string) string {
@@ -75,11 +77,20 @@ func interstitialPage(appName, tld string, failed bool, errorMsg string) string 
             width: 100%%;
         }
         .logo {
-            font-family: "SF Mono", Monaco, monospace;
+            font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
             font-size: 12px;
             white-space: pre;
-            color: #6b7280;
             margin-bottom: 40px;
+            letter-spacing: 0;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        .logo a {
+            color: #6b7280;
+            text-decoration: none;
+        }
+        .logo a:hover {
+            color: #3b82f6;
         }
         h1 {
             font-size: 24px;
@@ -180,7 +191,7 @@ func interstitialPage(appName, tld string, failed bool, errorMsg string) string 
 </head>
 <body>
     <div class="container" data-error="%s" data-app="%s" data-tld="%s">
-        <div class="logo">%s</div>
+        <div class="logo"><a href="http://roost-dev.%s/" title="roost-dev dashboard">%s</a></div>
         <h1>%s</h1>
         <div class="status" id="status">%s...</div>
         <div class="spinner" id="spinner"></div>
@@ -349,7 +360,8 @@ func interstitialPage(appName, tld string, failed bool, errorMsg string) string 
 		html.EscapeString(errorMsg), // data-error attribute
 		html.EscapeString(appName),  // data-app attribute
 		html.EscapeString(tld),      // data-tld attribute
-		asciiLogo,                   // logo (hardcoded, safe)
+		html.EscapeString(tld),      // logo link href
+		asciiLogo,                   // logo text (hardcoded, safe)
 		html.EscapeString(appName),  // h1
 		statusText,                  // status text
 		failed)                      // JS boolean

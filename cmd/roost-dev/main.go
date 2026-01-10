@@ -155,6 +155,13 @@ func main() {
 		os.Exit(0)
 	}()
 
+	if os.Getenv("CLAUDECODE") != "1" {
+		fmt.Println(`                 __            __
+   _________  ____  _____/ /_      ____/ /__ _   __
+  / ___/ __ \/ __ \/ ___/ __/_____/ __  / _ \ | / /
+ / /  / /_/ / /_/ (__  ) /_/_____/ /_/ /  __/ |/ /
+/_/   \____/\____/____/\__/      \__,_/\___/|___/`)
+	}
 	fmt.Printf("roost-dev %s\n", version)
 	fmt.Printf("Configuration directory: %s\n", configDir)
 	fmt.Printf("Listening on http://127.0.0.1:%d\n", httpPort)
@@ -197,7 +204,15 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Println(`roost-dev - Local development proxy for all your projects
+	if os.Getenv("CLAUDECODE") != "1" {
+		fmt.Println(`                 __            __
+   _________  ____  _____/ /_      ____/ /__ _   __
+  / ___/ __ \/ __ \/ ___/ __/_____/ __  / _ \ | / /
+ / /  / /_/ / /_/ (__  ) /_/_____/ /_/ /  __/ |/ /
+/_/   \____/\____/____/\__/      \__,_/\___/|___/`)
+	}
+	fmt.Println(`
+roost-dev - Local development proxy for all your projects
 
 USAGE:
     roost-dev [OPTIONS]

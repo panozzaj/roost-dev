@@ -38,3 +38,4 @@ curl -s "http://roost-dev.test/api/server-logs" | jq -r '.[]'
 
 - **Use non-blocking operations in HTTP handlers.** For process management, prefer `StartAsync()` over `Start()` in API handlers so responses return immediately. The dashboard polls for status updates.
 - **Avoid holding mutexes while waiting.** Release locks before any operation that could block (network calls, waiting for ports, etc.).
+- **Always background server processes.** When starting roost-dev from bash, use `run_in_background: true` or append `&` to avoid blocking the conversation. Use `tee` to capture output: `/path/to/roost-dev 2>&1 | tee ./tmp/roost-dev.log &`
