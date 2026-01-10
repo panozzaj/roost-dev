@@ -1,95 +1,53 @@
 package ui
 
 import (
-	"fmt"
+	"html/template"
 	"net/http"
+	"strings"
+
+	"github.com/panozzaj/roost-dev/internal/styles"
 )
+
+// dashboardData contains all data passed to the dashboard template
+type dashboardData struct {
+	ThemeScript template.HTML
+	ThemeCSS    template.CSS
+	MarkCSS     template.CSS
+	TLD         string
+	Port        int
+	InitialData template.JS
+}
+
+// dashboardTmpl is the parsed template for the dashboard page
+var dashboardTmpl = template.Must(template.New("dashboard").Parse(dashboardHTML))
 
 // ServeIndex serves the main dashboard HTML with initial app data
 func ServeIndex(w http.ResponseWriter, r *http.Request, tld string, port int, initialData []byte, theme string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, indexHTML, theme, tld, port, string(initialData), tld)
+
+	data := dashboardData{
+		ThemeScript: template.HTML(styles.ThemeScript(theme)),
+		ThemeCSS:    template.CSS(styles.HeadCSS()),
+		MarkCSS:     template.CSS(styles.LogsCSS()),
+		TLD:         tld,
+		Port:        port,
+		InitialData: template.JS(string(initialData)),
+	}
+
+	var b strings.Builder
+	dashboardTmpl.Execute(&b, data)
+	w.Write([]byte(b.String()))
 }
 
-const indexHTML = `<!DOCTYPE html>
+const dashboardHTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>roost-dev</title>
-    <script>
-        // Set theme immediately to prevent flash of wrong theme
-        (function() {
-            var theme = '%s'; // Server-injected theme
-            if (theme && theme !== 'system') {
-                document.documentElement.setAttribute('data-theme', theme);
-            }
-        })();
-    </script>
+{{.ThemeScript}}
     <style>
-        :root {
-            --bg-primary: #1a1a2e;
-            --bg-secondary: #16213e;
-            --bg-tertiary: #1a2744;
-            --bg-logs: #0f0f1a;
-            --text-primary: #eee;
-            --text-secondary: #d1d5db;
-            --text-muted: #9ca3af;
-            --border-color: #333;
-            --accent-blue: #60a5fa;
-            --accent-blue-hover: #93c5fd;
-            --btn-bg: #374151;
-            --btn-hover: #4b5563;
-            --tag-bg: #374151;
-            --success: #22c55e;
-            --warning: #f59e0b;
-            --error: #ef4444;
-            --error-bg: rgba(239, 68, 68, 0.1);
-        }
-
-        @media (prefers-color-scheme: light) {
-            :root:not([data-theme="dark"]) {
-                --bg-primary: #f5f5f5;
-                --bg-secondary: #ffffff;
-                --bg-tertiary: #f0f0f0;
-                --bg-logs: #fafafa;
-                --text-primary: #1a1a1a;
-                --text-secondary: #374151;
-                --text-muted: #6b7280;
-                --border-color: #e5e7eb;
-                --btn-bg: #e5e7eb;
-                --btn-hover: #d1d5db;
-                --tag-bg: #e5e7eb;
-            }
-        }
-
-        [data-theme="light"] {
-            --bg-primary: #f5f5f5;
-            --bg-secondary: #ffffff;
-            --bg-tertiary: #f0f0f0;
-            --bg-logs: #fafafa;
-            --text-primary: #1a1a1a;
-            --text-secondary: #374151;
-            --text-muted: #6b7280;
-            --border-color: #e5e7eb;
-            --btn-bg: #e5e7eb;
-            --btn-hover: #d1d5db;
-            --tag-bg: #e5e7eb;
-        }
-
-        [data-theme="dark"] {
-            --bg-primary: #1a1a2e;
-            --bg-secondary: #16213e;
-            --bg-tertiary: #1a2744;
-            --bg-logs: #0f0f1a;
-            --text-primary: #eee;
-            --text-secondary: #d1d5db;
-            --text-muted: #9ca3af;
-            --border-color: #333;
-            --btn-bg: #374151;
-            --btn-hover: #4b5563;
-            --tag-bg: #374151;
-        }
+{{.ThemeCSS}}
 
         * {
             box-sizing: border-box;
@@ -148,7 +106,7 @@ const indexHTML = `<!DOCTYPE html>
         .connection-dot {
             width: 8px;
             height: 8px;
-            border-radius: 50%%;
+            border-radius: 50%;
             background: var(--error);
         }
         .connection-dot.connected {
@@ -164,9 +122,9 @@ const indexHTML = `<!DOCTYPE html>
             animation: highlightPulse 1s ease-out;
         }
         @keyframes highlightPulse {
-            0%% { box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.7); }
-            70%% { box-shadow: 0 0 0 10px rgba(96, 165, 250, 0); }
-            100%% { box-shadow: 0 0 0 0 rgba(96, 165, 250, 0); }
+            0% { box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(96, 165, 250, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(96, 165, 250, 0); }
         }
         .app-header {
             display: flex;
@@ -186,7 +144,7 @@ const indexHTML = `<!DOCTYPE html>
         .status-dot {
             width: 10px;
             height: 10px;
-            border-radius: 50%%;
+            border-radius: 50%;
             background: var(--text-muted);
             cursor: pointer;
             transition: transform 0.1s;
@@ -203,9 +161,9 @@ const indexHTML = `<!DOCTYPE html>
         }
         .status-menu {
             position: absolute;
-            top: 100%%;
-            left: 50%%;
-            transform: translateX(-50%%);
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
             background: var(--bg-tertiary);
             border: 1px solid var(--border-color);
             border-radius: 6px;
@@ -220,7 +178,7 @@ const indexHTML = `<!DOCTYPE html>
         }
         .status-menu button {
             display: block;
-            width: 100%%;
+            width: 100%;
             padding: 6px 12px;
             background: none;
             border: none;
@@ -254,8 +212,8 @@ const indexHTML = `<!DOCTYPE html>
             animation: pulse 1s ease-in-out infinite;
         }
         @keyframes pulse {
-            0%%, 100%% { opacity: 1; transform: scale(1); }
-            50%% { opacity: 0.5; transform: scale(1.2); }
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
         }
         .app-description {
             font-size: 13px;
@@ -377,26 +335,7 @@ const indexHTML = `<!DOCTYPE html>
             word-break: break-all;
             color: var(--text-secondary);
         }
-        .logs-content mark {
-            background: linear-gradient(90deg, #fef9c3 50%%, transparent 50%%);
-            background-size: 200%% 100%%;
-            background-position: 100%% 0;
-            color: inherit;
-            padding: 0.15em 0;
-            margin: -0.15em 0;
-            border-radius: 0;
-            animation: highlightSweep 0.5s ease-out forwards;
-        }
-        @keyframes highlightSweep {
-            from { background-position: 100%% 0; }
-            to { background-position: 0%% 0; }
-        }
-        [data-theme="dark"] .logs-content mark,
-        :root:not([data-theme="light"]) .logs-content mark {
-            background: linear-gradient(90deg, #92702a 50%%, transparent 50%%);
-            background-size: 200%% 100%%;
-            background-position: 100%% 0;
-        }
+{{.MarkCSS}}
         .empty-state {
             text-align: center;
             padding: 60px 20px;
@@ -441,10 +380,10 @@ const indexHTML = `<!DOCTYPE html>
         // morphdom v2.7.4 - https://github.com/patrick-steele-idem/morphdom
         (function(global,factory){typeof exports==="object"&&typeof module!=="undefined"?module.exports=factory():typeof define==="function"&&define.amd?define(factory):(global=global||self,global.morphdom=factory())})(this,function(){"use strict";var DOCUMENT_FRAGMENT_NODE=11;function morphAttrs(fromNode,toNode){var toNodeAttrs=toNode.attributes;var attr;var attrName;var attrNamespaceURI;var attrValue;var fromValue;if(toNode.nodeType===DOCUMENT_FRAGMENT_NODE||fromNode.nodeType===DOCUMENT_FRAGMENT_NODE){return}for(var i=toNodeAttrs.length-1;i>=0;i--){attr=toNodeAttrs[i];attrName=attr.name;attrNamespaceURI=attr.namespaceURI;attrValue=attr.value;if(attrNamespaceURI){attrName=attr.localName||attrName;fromValue=fromNode.getAttributeNS(attrNamespaceURI,attrName);if(fromValue!==attrValue){if(attr.prefix==="xmlns"){attrName=attr.name}fromNode.setAttributeNS(attrNamespaceURI,attrName,attrValue)}}else{fromValue=fromNode.getAttribute(attrName);if(fromValue!==attrValue){fromNode.setAttribute(attrName,attrValue)}}}var fromNodeAttrs=fromNode.attributes;for(var d=fromNodeAttrs.length-1;d>=0;d--){attr=fromNodeAttrs[d];attrName=attr.name;attrNamespaceURI=attr.namespaceURI;if(attrNamespaceURI){attrName=attr.localName||attrName;if(!toNode.hasAttributeNS(attrNamespaceURI,attrName)){fromNode.removeAttributeNS(attrNamespaceURI,attrName)}}else{if(!toNode.hasAttribute(attrName)){fromNode.removeAttribute(attrName)}}}}var range;var NS_XHTML="http://www.w3.org/1999/xhtml";var doc=typeof document==="undefined"?undefined:document;var HAS_TEMPLATE_SUPPORT=!!doc&&"content"in doc.createElement("template");var HAS_RANGE_SUPPORT=!!doc&&doc.createRange&&"createContextualFragment"in doc.createRange();function createFragmentFromTemplate(str){var template=doc.createElement("template");template.innerHTML=str;return template.content.childNodes[0]}function createFragmentFromRange(str){if(!range){range=doc.createRange();range.selectNode(doc.body)}var fragment=range.createContextualFragment(str);return fragment.childNodes[0]}function createFragmentFromWrap(str){var fragment=doc.createElement("body");fragment.innerHTML=str;return fragment.childNodes[0]}function toElement(str){str=str.trim();if(HAS_TEMPLATE_SUPPORT){return createFragmentFromTemplate(str)}else if(HAS_RANGE_SUPPORT){return createFragmentFromRange(str)}return createFragmentFromWrap(str)}function compareNodeNames(fromEl,toEl){var fromNodeName=fromEl.nodeName;var toNodeName=toEl.nodeName;var fromCodeStart,toCodeStart;if(fromNodeName===toNodeName){return true}fromCodeStart=fromNodeName.charCodeAt(0);toCodeStart=toNodeName.charCodeAt(0);if(fromCodeStart<=90&&toCodeStart>=97){return fromNodeName===toNodeName.toUpperCase()}else if(toCodeStart<=90&&fromCodeStart>=97){return toNodeName===fromNodeName.toUpperCase()}else{return false}}function createElementNS(name,namespaceURI){return!namespaceURI||namespaceURI===NS_XHTML?doc.createElement(name):doc.createElementNS(namespaceURI,name)}function moveChildren(fromEl,toEl){var curChild=fromEl.firstChild;while(curChild){var nextChild=curChild.nextSibling;toEl.appendChild(curChild);curChild=nextChild}return toEl}function syncBooleanAttrProp(fromEl,toEl,name){if(fromEl[name]!==toEl[name]){fromEl[name]=toEl[name];if(fromEl[name]){fromEl.setAttribute(name,"")}else{fromEl.removeAttribute(name)}}}var specialElHandlers={OPTION:function(fromEl,toEl){var parentNode=fromEl.parentNode;if(parentNode){var parentName=parentNode.nodeName.toUpperCase();if(parentName==="OPTGROUP"){parentNode=parentNode.parentNode;parentName=parentNode&&parentNode.nodeName.toUpperCase()}if(parentName==="SELECT"&&!parentNode.hasAttribute("multiple")){if(fromEl.hasAttribute("selected")&&!toEl.selected){fromEl.setAttribute("selected","selected");fromEl.removeAttribute("selected")}parentNode.selectedIndex=-1}}syncBooleanAttrProp(fromEl,toEl,"selected")},INPUT:function(fromEl,toEl){syncBooleanAttrProp(fromEl,toEl,"checked");syncBooleanAttrProp(fromEl,toEl,"disabled");if(fromEl.value!==toEl.value){fromEl.value=toEl.value}if(!toEl.hasAttribute("value")){fromEl.removeAttribute("value")}},TEXTAREA:function(fromEl,toEl){var newValue=toEl.value;if(fromEl.value!==newValue){fromEl.value=newValue}var firstChild=fromEl.firstChild;if(firstChild){var oldValue=firstChild.nodeValue;if(oldValue==newValue||!newValue&&oldValue==fromEl.placeholder){return}firstChild.nodeValue=newValue}},SELECT:function(fromEl,toEl){if(!toEl.hasAttribute("multiple")){var selectedIndex=-1;var i=0;var curChild=fromEl.firstChild;var optgroup;var nodeName;while(curChild){nodeName=curChild.nodeName&&curChild.nodeName.toUpperCase();if(nodeName==="OPTGROUP"){optgroup=curChild;curChild=optgroup.firstChild}else{if(nodeName==="OPTION"){if(curChild.hasAttribute("selected")){selectedIndex=i;break}i++}curChild=curChild.nextSibling;if(!curChild&&optgroup){curChild=optgroup.nextSibling;optgroup=null}}}fromEl.selectedIndex=selectedIndex}}};var ELEMENT_NODE=1;var DOCUMENT_FRAGMENT_NODE$1=11;var TEXT_NODE=3;var COMMENT_NODE=8;function noop(){}function defaultGetNodeKey(node){if(node){return node.getAttribute&&node.getAttribute("id")||node.id}}function morphdomFactory(morphAttrs){return function morphdom(fromNode,toNode,options){if(!options){options={}}if(typeof toNode==="string"){if(fromNode.nodeName==="#document"||fromNode.nodeName==="HTML"||fromNode.nodeName==="BODY"){var toNodeHtml=toNode;toNode=doc.createElement("html");toNode.innerHTML=toNodeHtml}else{toNode=toElement(toNode)}}else if(toNode.nodeType===DOCUMENT_FRAGMENT_NODE$1){toNode=toNode.firstElementChild}var getNodeKey=options.getNodeKey||defaultGetNodeKey;var onBeforeNodeAdded=options.onBeforeNodeAdded||noop;var onNodeAdded=options.onNodeAdded||noop;var onBeforeElUpdated=options.onBeforeElUpdated||noop;var onElUpdated=options.onElUpdated||noop;var onBeforeNodeDiscarded=options.onBeforeNodeDiscarded||noop;var onNodeDiscarded=options.onNodeDiscarded||noop;var onBeforeElChildrenUpdated=options.onBeforeElChildrenUpdated||noop;var skipFromChildren=options.skipFromChildren||noop;var addChild=options.addChild||function(parent,child){return parent.appendChild(child)};var childrenOnly=options.childrenOnly===true;var fromNodesLookup=Object.create(null);var keyedRemovalList=[];function addKeyedRemoval(key){keyedRemovalList.push(key)}function walkDiscardedChildNodes(node,skipKeyedNodes){if(node.nodeType===ELEMENT_NODE){var curChild=node.firstChild;while(curChild){var key=undefined;if(skipKeyedNodes&&(key=getNodeKey(curChild))){addKeyedRemoval(key)}else{onNodeDiscarded(curChild);if(curChild.firstChild){walkDiscardedChildNodes(curChild,skipKeyedNodes)}}curChild=curChild.nextSibling}}}function removeNode(node,parentNode,skipKeyedNodes){if(onBeforeNodeDiscarded(node)===false){return}if(parentNode){parentNode.removeChild(node)}onNodeDiscarded(node);walkDiscardedChildNodes(node,skipKeyedNodes)}function indexTree(node){if(node.nodeType===ELEMENT_NODE||node.nodeType===DOCUMENT_FRAGMENT_NODE$1){var curChild=node.firstChild;while(curChild){var key=getNodeKey(curChild);if(key){fromNodesLookup[key]=curChild}indexTree(curChild);curChild=curChild.nextSibling}}}indexTree(fromNode);function handleNodeAdded(el){onNodeAdded(el);var curChild=el.firstChild;while(curChild){var nextSibling=curChild.nextSibling;var key=getNodeKey(curChild);if(key){var unmatchedFromEl=fromNodesLookup[key];if(unmatchedFromEl&&compareNodeNames(curChild,unmatchedFromEl)){curChild.parentNode.replaceChild(unmatchedFromEl,curChild);morphEl(unmatchedFromEl,curChild)}else{handleNodeAdded(curChild)}}else{handleNodeAdded(curChild)}curChild=nextSibling}}function cleanupFromEl(fromEl,curFromNodeChild,curFromNodeKey){while(curFromNodeChild){var fromNextSibling=curFromNodeChild.nextSibling;if(curFromNodeKey=getNodeKey(curFromNodeChild)){addKeyedRemoval(curFromNodeKey)}else{removeNode(curFromNodeChild,fromEl,true)}curFromNodeChild=fromNextSibling}}function morphEl(fromEl,toEl,childrenOnly){var toElKey=getNodeKey(toEl);if(toElKey){delete fromNodesLookup[toElKey]}if(!childrenOnly){var beforeUpdateResult=onBeforeElUpdated(fromEl,toEl);if(beforeUpdateResult===false){return}else if(beforeUpdateResult instanceof HTMLElement){fromEl=beforeUpdateResult;indexTree(fromEl)}morphAttrs(fromEl,toEl);onElUpdated(fromEl);if(onBeforeElChildrenUpdated(fromEl,toEl)===false){return}}if(fromEl.nodeName!=="TEXTAREA"){morphChildren(fromEl,toEl)}else{specialElHandlers.TEXTAREA(fromEl,toEl)}}function morphChildren(fromEl,toEl){var skipFrom=skipFromChildren(fromEl,toEl);var curToNodeChild=toEl.firstChild;var curFromNodeChild=fromEl.firstChild;var curToNodeKey;var curFromNodeKey;var fromNextSibling;var toNextSibling;var matchingFromEl;outer:while(curToNodeChild){toNextSibling=curToNodeChild.nextSibling;curToNodeKey=getNodeKey(curToNodeChild);while(!skipFrom&&curFromNodeChild){fromNextSibling=curFromNodeChild.nextSibling;if(curToNodeChild.isSameNode&&curToNodeChild.isSameNode(curFromNodeChild)){curToNodeChild=toNextSibling;curFromNodeChild=fromNextSibling;continue outer}curFromNodeKey=getNodeKey(curFromNodeChild);var curFromNodeType=curFromNodeChild.nodeType;var isCompatible=undefined;if(curFromNodeType===curToNodeChild.nodeType){if(curFromNodeType===ELEMENT_NODE){if(curToNodeKey){if(curToNodeKey!==curFromNodeKey){if(matchingFromEl=fromNodesLookup[curToNodeKey]){if(fromNextSibling===matchingFromEl){isCompatible=false}else{fromEl.insertBefore(matchingFromEl,curFromNodeChild);if(curFromNodeKey){addKeyedRemoval(curFromNodeKey)}else{removeNode(curFromNodeChild,fromEl,true)}curFromNodeChild=matchingFromEl;curFromNodeKey=getNodeKey(curFromNodeChild)}}else{isCompatible=false}}}else if(curFromNodeKey){isCompatible=false}isCompatible=isCompatible!==false&&compareNodeNames(curFromNodeChild,curToNodeChild);if(isCompatible){morphEl(curFromNodeChild,curToNodeChild)}}else if(curFromNodeType===TEXT_NODE||curFromNodeType==COMMENT_NODE){isCompatible=true;if(curFromNodeChild.nodeValue!==curToNodeChild.nodeValue){curFromNodeChild.nodeValue=curToNodeChild.nodeValue}}}if(isCompatible){curToNodeChild=toNextSibling;curFromNodeChild=fromNextSibling;continue outer}if(curFromNodeKey){addKeyedRemoval(curFromNodeKey)}else{removeNode(curFromNodeChild,fromEl,true)}curFromNodeChild=fromNextSibling}if(curToNodeKey&&(matchingFromEl=fromNodesLookup[curToNodeKey])&&compareNodeNames(matchingFromEl,curToNodeChild)){if(!skipFrom){addChild(fromEl,matchingFromEl)}morphEl(matchingFromEl,curToNodeChild)}else{var onBeforeNodeAddedResult=onBeforeNodeAdded(curToNodeChild);if(onBeforeNodeAddedResult!==false){if(onBeforeNodeAddedResult){curToNodeChild=onBeforeNodeAddedResult}if(curToNodeChild.actualize){curToNodeChild=curToNodeChild.actualize(fromEl.ownerDocument||doc)}addChild(fromEl,curToNodeChild);handleNodeAdded(curToNodeChild)}}curToNodeChild=toNextSibling;curFromNodeChild=fromNextSibling}cleanupFromEl(fromEl,curFromNodeChild,curFromNodeKey);var specialElHandler=specialElHandlers[fromEl.nodeName];if(specialElHandler){specialElHandler(fromEl,toEl)}}var morphedNode=fromNode;var morphedNodeType=morphedNode.nodeType;var toNodeType=toNode.nodeType;if(!childrenOnly){if(morphedNodeType===ELEMENT_NODE){if(toNodeType===ELEMENT_NODE){if(!compareNodeNames(fromNode,toNode)){onNodeDiscarded(fromNode);morphedNode=moveChildren(fromNode,createElementNS(toNode.nodeName,toNode.namespaceURI))}}else{morphedNode=toNode}}else if(morphedNodeType===TEXT_NODE||morphedNodeType===COMMENT_NODE){if(toNodeType===morphedNodeType){if(morphedNode.nodeValue!==toNode.nodeValue){morphedNode.nodeValue=toNode.nodeValue}return morphedNode}else{morphedNode=toNode}}}if(morphedNode===toNode){onNodeDiscarded(fromNode)}else{if(toNode.isSameNode&&toNode.isSameNode(morphedNode)){return}morphEl(morphedNode,toNode,childrenOnly);if(keyedRemovalList){for(var i=0,len=keyedRemovalList.length;i<len;i++){var elToRemove=fromNodesLookup[keyedRemovalList[i]];if(elToRemove){removeNode(elToRemove,elToRemove.parentNode,false)}}}}if(!childrenOnly&&morphedNode!==fromNode&&fromNode.parentNode){if(morphedNode.actualize){morphedNode=morphedNode.actualize(fromNode.ownerDocument||doc)}fromNode.parentNode.replaceChild(morphedNode,fromNode)}return morphedNode}}var morphdom=morphdomFactory(morphAttrs);return morphdom});
 
-        const TLD = '%s';
-        const PORT = %d;
+        const TLD = '{{.TLD}}';
+        const PORT = {{.Port}};
         const portSuffix = PORT === 80 ? '' : ':' + PORT;
-        const INITIAL_DATA = %s;
+        const INITIAL_DATA = {{.InitialData}};
         let currentApps = [];
         let expandedLogs = null;
         let eventSource = null;
@@ -477,7 +416,7 @@ const indexHTML = `<!DOCTYPE html>
         function toggleTheme() {
             const current = getTheme();
             const themes = ['system', 'light', 'dark'];
-            const next = themes[(themes.indexOf(current) + 1) %% themes.length];
+            const next = themes[(themes.indexOf(current) + 1) % themes.length];
             setTheme(next);
         }
 
@@ -540,7 +479,7 @@ echo "3000" > ~/.config/roost-dev/myapp
 # Command (auto-starts with PORT env)
 echo "npm run dev" > ~/.config/roost-dev/myapp
 
-# Then visit http://myapp.%s</code>
+# Then visit http://myapp.{{.TLD}}</code>
                     </div>
                 ` + "`" + `;
             } else {
@@ -654,7 +593,7 @@ echo "npm run dev" > ~/.config/roost-dev/myapp
                             <span class="app-port">${app.port ? ':' + app.port : ''}</span>
                             <span class="app-uptime">${app.uptime || ''}</span>
                             ${(!(app.services && app.services.length) || (app.services && app.services.some(s => s.default))) ? ` + "`" + `<a class="app-url" href="${app.url}" target="_blank" rel="noopener" onclick="event.stopPropagation()">
-                                ${app.name}.${TLD}
+                                ${app.name}.` + "`" + ` + TLD + ` + "`" + `
                             </a>` + "`" + ` : ''}
                         </div>
                     </div>
