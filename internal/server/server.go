@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/panozzaj/roost-dev/internal/config"
 	"github.com/panozzaj/roost-dev/internal/process"
@@ -159,6 +160,8 @@ func interstitialPage(appName, tld string, failed bool, errorMsg string) string 
         const tld = '%s';
         let failed = %t;
         let lastLogCount = 0;
+        const startTime = Date.now();
+        const MIN_WAIT_MS = 2000; // Wait at least 2 seconds before redirecting
 
         async function poll() {
             try {
@@ -184,6 +187,14 @@ func interstitialPage(appName, tld string, failed bool, errorMsg string) string 
 
                 // Check status
                 if (status.status === 'running') {
+                    // Ensure minimum wait time has elapsed before redirecting
+                    // This gives services time to fully initialize even after port is ready
+                    const elapsed = Date.now() - startTime;
+                    if (elapsed < MIN_WAIT_MS) {
+                        document.getElementById('status').textContent = 'Almost ready...';
+                        setTimeout(poll, MIN_WAIT_MS - elapsed);
+                        return;
+                    }
                     document.getElementById('status').textContent = 'Ready! Redirecting...';
                     document.getElementById('spinner').style.borderTopColor = '#22c55e';
                     setTimeout(() => location.reload(), 300);
@@ -229,10 +240,13 @@ func interstitialPage(appName, tld string, failed bool, errorMsg string) string 
 
 // Server is the main roost-dev server
 type Server struct {
-	cfg     *config.Config
-	apps    *config.AppStore
-	procs   *process.Manager
-	httpSrv *http.Server
+	cfg           *config.Config
+	apps          *config.AppStore
+	procs         *process.Manager
+	httpSrv       *http.Server
+	requestLog    *process.LogBuffer // Reuse LogBuffer for request logging
+	broadcaster   *Broadcaster       // SSE broadcaster for real-time updates
+	configWatcher *config.Watcher    // Watches config directory for changes
 }
 
 // New creates a new server
@@ -242,15 +256,59 @@ func New(cfg *config.Config) (*Server, error) {
 		return nil, fmt.Errorf("loading apps: %w", err)
 	}
 
-	return &Server{
-		cfg:   cfg,
-		apps:  apps,
-		procs: process.NewManager(),
-	}, nil
+	s := &Server{
+		cfg:         cfg,
+		apps:        apps,
+		procs:       process.NewManager(),
+		requestLog:  process.NewLogBuffer(500), // Keep last 500 request log entries
+		broadcaster: NewBroadcaster(),
+	}
+
+	// Set up config watcher
+	watcher, err := config.NewWatcher(cfg.Dir, func() {
+		if err := s.apps.Reload(); err != nil {
+			s.logRequest("Config reload error: %v", err)
+		} else {
+			s.logRequest("Config reloaded")
+			s.broadcastStatus()
+		}
+	})
+	if err != nil {
+		// Log but don't fail - config watching is optional
+		fmt.Printf("Warning: could not watch config directory: %v\n", err)
+	} else {
+		s.configWatcher = watcher
+	}
+
+	return s, nil
+}
+
+// logRequest logs a request handling event
+func (s *Server) logRequest(format string, args ...interface{}) {
+	timestamp := time.Now().Format("15:04:05.000")
+	msg := fmt.Sprintf(format, args...)
+	s.requestLog.Write([]byte(fmt.Sprintf("[%s] %s\n", timestamp, msg)))
+	fmt.Printf("[%s] %s\n", timestamp, msg) // Also print to stdout
 }
 
 // Start starts the HTTP server
 func (s *Server) Start() error {
+	// Start config watcher
+	if s.configWatcher != nil {
+		s.configWatcher.Start()
+	}
+
+	// Periodic status broadcast to catch state changes (process ready/failed)
+	go func() {
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			if s.broadcaster.ClientCount() > 0 {
+				s.broadcastStatus()
+			}
+		}
+	}()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleRequest)
 
@@ -265,6 +323,9 @@ func (s *Server) Start() error {
 
 // Shutdown gracefully shuts down the server
 func (s *Server) Shutdown() {
+	if s.configWatcher != nil {
+		s.configWatcher.Stop()
+	}
 	s.procs.StopAll()
 	if s.httpSrv != nil {
 		s.httpSrv.Close()
@@ -367,18 +428,21 @@ func (s *Server) handleApp(w http.ResponseWriter, r *http.Request, app *config.A
 		if found && proc.HasFailed() {
 			// Failed - show interstitial with error
 			w.Header().Set("Content-Type", "text/html")
+			w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
 			w.Write([]byte(interstitialPage(app.Name, s.cfg.TLD, true, proc.ExitError())))
 			return
 		}
 		if found && proc.IsStarting() {
 			// Starting - show interstitial
 			w.Header().Set("Content-Type", "text/html")
+			w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
 			w.Write([]byte(interstitialPage(app.Name, s.cfg.TLD, false, "")))
 			return
 		}
 		// Idle - start async and show interstitial
 		s.procs.StartAsync(app.Name, app.Command, app.Dir, app.Env)
 		w.Header().Set("Content-Type", "text/html")
+		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
 		w.Write([]byte(interstitialPage(app.Name, s.cfg.TLD, false, "")))
 
 	case config.AppTypeStatic:
@@ -439,33 +503,47 @@ func (s *Server) ensureDependencies(app *config.App, svc *config.Service) {
 
 // handleService handles a request for a service within a multi-service app
 func (s *Server) handleService(w http.ResponseWriter, r *http.Request, app *config.App, svc *config.Service) {
+	procName := fmt.Sprintf("%s-%s", svc.Name, app.Name)
+	s.logRequest("handleService: %s (path=%s)", procName, r.URL.Path)
+
 	// Start dependencies first
 	s.ensureDependencies(app, svc)
 
-	procName := fmt.Sprintf("%s-%s", svc.Name, app.Name)
-
 	// Check process status and serve appropriately
 	proc, found := s.procs.Get(procName)
+	s.logRequest("  %s: found=%v, running=%v, starting=%v, failed=%v",
+		procName, found,
+		found && proc.IsRunning(),
+		found && proc.IsStarting(),
+		found && proc.HasFailed())
+
 	if found && proc.IsRunning() {
 		// Already running - proxy directly
+		s.logRequest("  -> PROXY to port %d", proc.Port)
 		proxy.NewReverseProxy(proc.Port).ServeHTTP(w, r)
 		return
 	}
 	if found && proc.HasFailed() {
 		// Failed - show interstitial with error
+		s.logRequest("  -> INTERSTITIAL (failed)")
 		w.Header().Set("Content-Type", "text/html")
+		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
 		w.Write([]byte(interstitialPage(procName, s.cfg.TLD, true, proc.ExitError())))
 		return
 	}
 	if found && proc.IsStarting() {
 		// Starting - show interstitial
+		s.logRequest("  -> INTERSTITIAL (starting)")
 		w.Header().Set("Content-Type", "text/html")
+		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
 		w.Write([]byte(interstitialPage(procName, s.cfg.TLD, false, "")))
 		return
 	}
 	// Idle - start async and show interstitial
+	s.logRequest("  -> INTERSTITIAL (idle, starting %s)", procName)
 	s.procs.StartAsync(procName, svc.Command, svc.Dir, svc.Env)
 	w.Header().Set("Content-Type", "text/html")
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
 	w.Write([]byte(interstitialPage(procName, s.cfg.TLD, false, "")))
 }
 
@@ -537,6 +615,9 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	case "/api/status":
 		s.handleAPIStatus(w, r)
 
+	case "/api/events":
+		s.handleSSE(w, r)
+
 	case "/api/reload":
 		s.apps.Reload()
 		w.WriteHeader(http.StatusOK)
@@ -555,6 +636,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 					s.procs.Stop(procName)
 				}
 			}
+			s.broadcastStatus()
 		}
 		w.WriteHeader(http.StatusOK)
 
@@ -580,6 +662,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 				// Try to start it fresh
 				s.startByName(name)
 			}
+			s.broadcastStatus()
 		}
 		w.WriteHeader(http.StatusOK)
 
@@ -587,6 +670,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		name := r.URL.Query().Get("name")
 		if name != "" {
 			s.startByName(name)
+			s.broadcastStatus()
 		}
 		w.WriteHeader(http.StatusOK)
 
@@ -613,6 +697,11 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(allLogs)
+
+	case "/api/server-logs":
+		// Return roost-dev's request handling logs
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(s.requestLog.Lines())
 
 	case "/api/app-status":
 		name := r.URL.Query().Get("name")
@@ -642,18 +731,22 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 				if app, svc, found := s.apps.GetService(appName, serviceName); found {
 					for _, depName := range svc.DependsOn {
 						depProcName := fmt.Sprintf("%s-%s", depName, app.Name)
-						if depProc, found := s.procs.Get(depProcName); found {
-							if depProc.IsStarting() {
-								status.Status = "starting" // Dependency still starting
-								break
-							} else if depProc.HasFailed() {
-								status.Status = "failed"
-								status.Error = fmt.Sprintf("dependency %s failed: %s", depName, depProc.ExitError())
-								break
-							} else if !depProc.IsRunning() {
-								status.Status = "starting" // Dependency not ready
-								break
-							}
+						depProc, found := s.procs.Get(depProcName)
+						if !found {
+							// Dependency not started yet - report starting
+							status.Status = "starting"
+							break
+						}
+						if depProc.IsStarting() {
+							status.Status = "starting" // Dependency still starting
+							break
+						} else if depProc.HasFailed() {
+							status.Status = "failed"
+							status.Error = fmt.Sprintf("dependency %s failed: %s", depName, depProc.ExitError())
+							break
+						} else if !depProc.IsRunning() {
+							status.Status = "starting" // Dependency not ready
+							break
 						}
 					}
 				}
@@ -671,12 +764,13 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 // handleAPIStatus returns status of all apps and processes
 func (s *Server) handleAPIStatus(w http.ResponseWriter, r *http.Request) {
 	type serviceStatus struct {
-		Name    string `json:"name"`
-		Running bool   `json:"running"`
-		Failed  bool   `json:"failed,omitempty"`
-		Error   string `json:"error,omitempty"`
-		Port    int    `json:"port,omitempty"`
-		Uptime  string `json:"uptime,omitempty"`
+		Name     string `json:"name"`
+		Running  bool   `json:"running"`
+		Starting bool   `json:"starting,omitempty"`
+		Failed   bool   `json:"failed,omitempty"`
+		Error    string `json:"error,omitempty"`
+		Port     int    `json:"port,omitempty"`
+		Uptime   string `json:"uptime,omitempty"`
 	}
 
 	type appStatus struct {
@@ -685,6 +779,7 @@ func (s *Server) handleAPIStatus(w http.ResponseWriter, r *http.Request) {
 		Type        string          `json:"type"`
 		URL         string          `json:"url"`
 		Running     bool            `json:"running,omitempty"`
+		Starting    bool            `json:"starting,omitempty"`
 		Failed      bool            `json:"failed,omitempty"`
 		Error       string          `json:"error,omitempty"`
 		Port        int             `json:"port,omitempty"`
@@ -722,6 +817,8 @@ func (s *Server) handleAPIStatus(w http.ResponseWriter, r *http.Request) {
 					as.Running = true
 					as.Port = proc.Port
 					as.Uptime = proc.Uptime().Round(1e9).String()
+				} else if proc.IsStarting() {
+					as.Starting = true
 				} else if proc.HasFailed() {
 					as.Failed = true
 					as.Error = proc.ExitError()
@@ -743,6 +840,8 @@ func (s *Server) handleAPIStatus(w http.ResponseWriter, r *http.Request) {
 						ss.Running = true
 						ss.Port = proc.Port
 						ss.Uptime = proc.Uptime().Round(1e9).String()
+					} else if proc.IsStarting() {
+						ss.Starting = true
 					} else if proc.HasFailed() {
 						ss.Failed = true
 						ss.Error = proc.ExitError()
@@ -757,4 +856,149 @@ func (s *Server) handleAPIStatus(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(status)
+}
+
+// handleSSE handles Server-Sent Events connections for real-time updates
+func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
+	// Check if client supports SSE
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "SSE not supported", http.StatusInternalServerError)
+		return
+	}
+
+	// Set SSE headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	// Subscribe to broadcasts
+	ch := s.broadcaster.Subscribe()
+	defer s.broadcaster.Unsubscribe(ch)
+
+	// Send initial status immediately
+	s.sendStatusToClient(w, flusher)
+
+	// Listen for updates or client disconnect
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case data, ok := <-ch:
+			if !ok {
+				return
+			}
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+		}
+	}
+}
+
+// sendStatusToClient sends current status to a single SSE client
+func (s *Server) sendStatusToClient(w http.ResponseWriter, flusher http.Flusher) {
+	status := s.getStatusJSON()
+	fmt.Fprintf(w, "data: %s\n\n", status)
+	flusher.Flush()
+}
+
+// broadcastStatus sends current status to all connected SSE clients
+func (s *Server) broadcastStatus() {
+	status := s.getStatusJSON()
+	s.broadcaster.Broadcast(status)
+}
+
+// getStatusJSON returns the current status as JSON bytes
+func (s *Server) getStatusJSON() []byte {
+	type serviceStatus struct {
+		Name     string `json:"name"`
+		Running  bool   `json:"running"`
+		Starting bool   `json:"starting,omitempty"`
+		Failed   bool   `json:"failed,omitempty"`
+		Error    string `json:"error,omitempty"`
+		Port     int    `json:"port,omitempty"`
+		Uptime   string `json:"uptime,omitempty"`
+	}
+
+	type appStatus struct {
+		Name        string          `json:"name"`
+		Description string          `json:"description,omitempty"`
+		Type        string          `json:"type"`
+		URL         string          `json:"url"`
+		Running     bool            `json:"running,omitempty"`
+		Starting    bool            `json:"starting,omitempty"`
+		Failed      bool            `json:"failed,omitempty"`
+		Error       string          `json:"error,omitempty"`
+		Port        int             `json:"port,omitempty"`
+		Uptime      string          `json:"uptime,omitempty"`
+		Services    []serviceStatus `json:"services,omitempty"`
+	}
+
+	var status []appStatus
+
+	baseURL := func(name string) string {
+		if s.cfg.URLPort == 80 {
+			return fmt.Sprintf("http://%s.%s", name, s.cfg.TLD)
+		}
+		return fmt.Sprintf("http://%s.%s:%d", name, s.cfg.TLD, s.cfg.URLPort)
+	}
+
+	for _, app := range s.apps.All() {
+		as := appStatus{
+			Name:        app.Name,
+			Description: app.Description,
+			URL:         baseURL(app.Name),
+		}
+
+		switch app.Type {
+		case config.AppTypePort:
+			as.Type = "port"
+			as.Port = app.Port
+			as.Running = true
+
+		case config.AppTypeCommand:
+			as.Type = "command"
+			if proc, found := s.procs.Get(app.Name); found {
+				if proc.IsRunning() {
+					as.Running = true
+					as.Port = proc.Port
+					as.Uptime = proc.Uptime().Round(1e9).String()
+				} else if proc.IsStarting() {
+					as.Starting = true
+				} else if proc.HasFailed() {
+					as.Failed = true
+					as.Error = proc.ExitError()
+				}
+			}
+
+		case config.AppTypeStatic:
+			as.Type = "static"
+			as.Running = true
+
+		case config.AppTypeYAML:
+			as.Type = "multi-service"
+			for _, svc := range app.Services {
+				ss := serviceStatus{Name: svc.Name}
+				procName := fmt.Sprintf("%s-%s", svc.Name, app.Name)
+				if proc, found := s.procs.Get(procName); found {
+					if proc.IsRunning() {
+						ss.Running = true
+						ss.Port = proc.Port
+						ss.Uptime = proc.Uptime().Round(1e9).String()
+					} else if proc.IsStarting() {
+						ss.Starting = true
+					} else if proc.HasFailed() {
+						ss.Failed = true
+						ss.Error = proc.ExitError()
+					}
+				}
+				as.Services = append(as.Services, ss)
+			}
+		}
+
+		status = append(status, as)
+	}
+
+	data, _ := json.Marshal(status)
+	return data
 }
