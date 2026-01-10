@@ -108,3 +108,97 @@ func TestManager(t *testing.T) {
 		}
 	})
 }
+
+func TestProcessStates(t *testing.T) {
+	t.Run("new process starts in starting state", func(t *testing.T) {
+		m := NewManager()
+		// Use a command that starts quickly but doesn't listen on port
+		proc, err := m.StartAsync("test", "sleep 10", "/tmp", nil)
+		if err != nil {
+			t.Fatalf("StartAsync failed: %v", err)
+		}
+		defer m.Stop("test")
+
+		// Should be in starting state (port not ready)
+		if !proc.IsStarting() {
+			t.Error("expected process to be in starting state")
+		}
+		if proc.IsRunning() {
+			t.Error("expected process to not be running (port not ready)")
+		}
+		if proc.HasFailed() {
+			t.Error("expected process to not have failed")
+		}
+	})
+
+	t.Run("stop removes process from map", func(t *testing.T) {
+		m := NewManager()
+		_, err := m.StartAsync("test", "sleep 10", "/tmp", nil)
+		if err != nil {
+			t.Fatalf("StartAsync failed: %v", err)
+		}
+
+		// Verify process exists
+		if _, found := m.Get("test"); !found {
+			t.Fatal("expected process to exist before stop")
+		}
+
+		// Stop it
+		m.Stop("test")
+
+		// Verify process is gone
+		if _, found := m.Get("test"); found {
+			t.Error("expected process to be removed after stop")
+		}
+	})
+
+	t.Run("StartAsync returns existing process if starting", func(t *testing.T) {
+		m := NewManager()
+		// Use a command that doesn't listen on port (stays in starting state)
+		proc1, err := m.StartAsync("test", "sleep 10", "/tmp", nil)
+		if err != nil {
+			t.Fatalf("StartAsync failed: %v", err)
+		}
+		defer m.Stop("test")
+
+		// Immediately try to start again
+		proc2, err := m.StartAsync("test", "sleep 10", "/tmp", nil)
+		if err != nil {
+			t.Fatalf("second StartAsync failed: %v", err)
+		}
+
+		if proc1 != proc2 {
+			t.Error("expected same process instance to be returned for starting process")
+		}
+	})
+}
+
+func TestProcessStateQueries(t *testing.T) {
+	t.Run("IsRunning returns false for nil cmd", func(t *testing.T) {
+		p := &Process{}
+		if p.IsRunning() {
+			t.Error("IsRunning should return false for nil cmd")
+		}
+	})
+
+	t.Run("IsStarting returns false when starting is false", func(t *testing.T) {
+		p := &Process{starting: false}
+		if p.IsStarting() {
+			t.Error("IsStarting should return false when starting is false")
+		}
+	})
+
+	t.Run("IsStarting returns false when failed", func(t *testing.T) {
+		p := &Process{starting: true, failed: true}
+		if p.IsStarting() {
+			t.Error("IsStarting should return false when process has failed")
+		}
+	})
+
+	t.Run("HasFailed returns true when failed is set", func(t *testing.T) {
+		p := &Process{failed: true}
+		if !p.HasFailed() {
+			t.Error("HasFailed should return true when failed is set")
+		}
+	})
+}

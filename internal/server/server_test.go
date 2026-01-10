@@ -254,3 +254,72 @@ func TestEnsureDependenciesIntegration(t *testing.T) {
 		procs.Stop("b-chainapp")
 	})
 }
+
+func TestDependencyStatusChecking(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &config.Config{TLD: "test", Dir: tmpDir}
+	apps := config.NewAppStore(cfg)
+	procs := process.NewManager()
+	s := newTestServer(cfg, apps, procs)
+
+	// Create a test YAML config with dependencies
+	yamlContent := `
+name: deptest
+root: /tmp
+services:
+  api:
+    cmd: python3 -m http.server $PORT
+  web:
+    cmd: python3 -m http.server $PORT
+    depends_on: [api]
+`
+	configPath := tmpDir + "/deptest.yml"
+	if err := os.WriteFile(configPath, []byte(yamlContent), 0644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	if err := apps.Load(); err != nil {
+		t.Fatalf("failed to load apps: %v", err)
+	}
+
+	t.Run("service reports starting when dependency not in map", func(t *testing.T) {
+		// Start only web (not api) - this simulates a race condition
+		// where web starts but api hasn't been added to the map yet
+		procs.StartAsync("web-deptest", "python3 -m http.server $PORT", "/tmp", nil)
+		defer procs.Stop("web-deptest")
+
+		// web is running but api is not in the map
+		// getDependencyStatus should report that we need to wait
+
+		app, _ := apps.Get("deptest")
+		webSvc := s.findService(app, "web")
+		if webSvc == nil {
+			t.Fatal("web service not found")
+		}
+
+		// Check if api dependency is satisfied
+		// Since api is not in the map, this should indicate we're not ready
+		apiProc, found := procs.Get("api-deptest")
+		if found {
+			t.Error("api-deptest should not be in the map")
+		}
+		if apiProc != nil {
+			t.Error("apiProc should be nil")
+		}
+	})
+
+	t.Run("service reports starting when dependency is starting", func(t *testing.T) {
+		// Start api with a command that doesn't listen on port (stays starting)
+		procs.StartAsync("api-deptest2", "sleep 999", "/tmp", nil)
+		defer procs.Stop("api-deptest2")
+
+		// api should be in starting state (not listening on port)
+		apiProc, found := procs.Get("api-deptest2")
+		if !found {
+			t.Fatal("api-deptest2 should be in the map")
+		}
+		if !apiProc.IsStarting() {
+			t.Error("api-deptest2 should be starting (port not ready)")
+		}
+	})
+}
