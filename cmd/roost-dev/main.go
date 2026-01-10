@@ -15,6 +15,7 @@ import (
 
 	"github.com/panozzaj/roost-dev/internal/config"
 	"github.com/panozzaj/roost-dev/internal/dns"
+	"github.com/panozzaj/roost-dev/internal/logo"
 	"github.com/panozzaj/roost-dev/internal/server"
 )
 
@@ -27,15 +28,9 @@ var (
 	version = "dev"
 )
 
-const asciiLogo = `                          __            __
-   _________  ____  _____/ /_      ____/ /__ _   __
-  / ___/ __ \/ __ \/ ___/ __/_____/ __  / _ \ | / /
- / /  / /_/ / /_/ (__  ) /_/_____/ /_/ /  __/ |/ /
-/_/   \____/\____/____/\__/      \__,_/\___/|___/`
-
 func printLogo() {
 	if os.Getenv("CLAUDECODE") != "1" {
-		fmt.Println(asciiLogo)
+		fmt.Println(logo.CLI())
 	}
 }
 

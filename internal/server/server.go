@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/panozzaj/roost-dev/internal/config"
+	"github.com/panozzaj/roost-dev/internal/logo"
 	"github.com/panozzaj/roost-dev/internal/process"
 	"github.com/panozzaj/roost-dev/internal/proxy"
 	"github.com/panozzaj/roost-dev/internal/ui"
@@ -19,32 +20,107 @@ func slugify(name string) string {
 	return strings.ToLower(strings.ReplaceAll(name, " ", "-"))
 }
 
-const asciiLogo = `
-                 __            __
-   _________  ____  _____/ /_      ____/ /__ _   __
-  / ___/ __ \/ __ \/ ___/ __/_____/ __  / _ \ | / /
- / /  / /_/ / /_/ (__  ) /_/_____/ /_/ /  __/ |/ /
-/_/   \____/\____/____/\__/      \__,_/\___/|___/
-`
-
-func errorPage(msg string) string {
-	return asciiLogo + "\n" + msg + "\n"
-}
-
-func errorPageWithLogs(msg string, logs []string) string {
-	result := asciiLogo + "\n" + msg + "\n"
-	if len(logs) > 0 {
-		result += "\n--- Recent logs ---\n"
-		// Show last 20 lines
-		start := 0
-		if len(logs) > 20 {
-			start = len(logs) - 20
-		}
-		for _, line := range logs[start:] {
-			result += line + "\n"
-		}
-	}
-	return result
+func errorPage(title, message, hint, tld string) string {
+	return fmt.Sprintf(`<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>%s</title>
+    <style>
+        :root {
+            --bg-primary: #1a1a2e;
+            --text-primary: #eee;
+            --text-secondary: #9ca3af;
+            --text-muted: #6b7280;
+            --border-color: #374151;
+        }
+        @media (prefers-color-scheme: light) {
+            :root {
+                --bg-primary: #f5f5f5;
+                --text-primary: #1a1a1a;
+                --text-secondary: #4b5563;
+                --text-muted: #6b7280;
+                --border-color: #e5e7eb;
+            }
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            margin: 0;
+            padding: 60px 40px 40px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .container {
+            text-align: center;
+            max-width: 700px;
+            width: 100%%;
+        }
+        .logo {
+            font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+            font-size: 12px;
+            white-space: pre;
+            margin-bottom: 40px;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        .logo a {
+            color: var(--text-muted);
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+        .logo a:hover {
+            background: linear-gradient(90deg, #ff6b6b, #feca57, #48dbfb, #ff9ff3, #54a0ff, #5f27cd);
+            background-size: 200%% auto;
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            animation: rainbow 2s linear infinite;
+        }
+        @keyframes rainbow {
+            0%% { background-position: 0%% center; }
+            100%% { background-position: 200%% center; }
+        }
+        h1 {
+            font-size: 24px;
+            margin: 0 0 16px 0;
+            color: var(--text-primary);
+        }
+        .message {
+            font-size: 16px;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+        }
+        .hint {
+            font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+            font-size: 13px;
+            color: var(--text-muted);
+            background: var(--border-color);
+            padding: 12px 16px;
+            border-radius: 6px;
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo"><a href="http://roost-dev.%s">%s</a></div>
+        <h1>%s</h1>
+        <p class="message">%s</p>
+        %s
+    </div>
+</body>
+</html>`,
+		html.EscapeString(title),
+		html.EscapeString(tld),
+		logo.Web(),
+		html.EscapeString(title),
+		html.EscapeString(message),
+		hint)
 }
 
 func interstitialPage(appName, tld string, failed bool, errorMsg string) string {
@@ -395,7 +471,7 @@ func interstitialPage(appName, tld string, failed bool, errorMsg string) string 
 		html.EscapeString(appName),  // data-app attribute
 		html.EscapeString(tld),      // data-tld attribute
 		html.EscapeString(tld),      // logo link href
-		asciiLogo,                   // logo text (hardcoded, safe)
+		logo.Web(),                  // logo text
 		html.EscapeString(appName),  // h1
 		statusText,                  // status text
 		failed)                      // JS boolean
@@ -516,13 +592,25 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 			s.handleService(w, r, app, svc)
 			return
 		}
-		http.Error(w, errorPage(fmt.Sprintf("Service not found: %s\n\nAvailable at roost-dev-tests", subdomain)), http.StatusNotFound)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprint(w, errorPage(
+			"Service not found",
+			fmt.Sprintf("No service named '%s' in roost-dev-tests", subdomain),
+			`<p class="hint">Check available services at <a href="http://roost-dev.test">roost-dev.test</a></p>`,
+			s.cfg.TLD))
 		return
 	}
 
 	// Parse hostname: [service-]appname.tld
 	if !strings.HasSuffix(host, "."+s.cfg.TLD) {
-		http.Error(w, errorPage(fmt.Sprintf("Invalid host: %s (expected *.%s)", host, s.cfg.TLD)), http.StatusBadRequest)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, errorPage(
+			"Invalid host",
+			fmt.Sprintf("Expected *.%s, got %s", s.cfg.TLD, host),
+			"",
+			s.cfg.TLD))
 		return
 	}
 
@@ -553,7 +641,13 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !found {
-		http.Error(w, errorPage(fmt.Sprintf("App not found: %s\n\nCreate a config file at: %s/%s", name, s.cfg.Dir, name)), http.StatusNotFound)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprint(w, errorPage(
+			"App not found",
+			fmt.Sprintf("No app configured for '%s'", name),
+			fmt.Sprintf(`<p class="hint">Create config at: %s/%s.yml</p>`, html.EscapeString(s.cfg.Dir), html.EscapeString(name)),
+			s.cfg.TLD))
 		return
 	}
 
