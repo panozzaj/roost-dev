@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/http"
 	"strings"
 	"time"
@@ -162,7 +163,7 @@ func interstitialPage(appName, tld string, failed bool, errorMsg string) string 
     </style>
 </head>
 <body>
-    <div class="container">
+    <div class="container" data-error="%s" data-app="%s" data-tld="%s">
         <div class="logo">%s</div>
         <h1>%s</h1>
         <div class="status" id="status">%s...</div>
@@ -177,8 +178,9 @@ func interstitialPage(appName, tld string, failed bool, errorMsg string) string 
         <button class="btn btn-primary retry-btn" id="retry-btn" onclick="restartAndRetry()">Restart</button>
     </div>
     <script>
-        const appName = '%s';
-        const tld = '%s';
+        const container = document.querySelector('.container');
+        const appName = container.dataset.app;
+        const tld = container.dataset.tld;
         let failed = %t;
         let lastLogCount = 0;
         const startTime = Date.now();
@@ -269,7 +271,9 @@ func interstitialPage(appName, tld string, failed bool, errorMsg string) string 
         }
 
         if (failed) {
-            showError('%s');
+            // Get error from data attribute (safer than inline string)
+            const errorMsg = container.dataset.error || '';
+            showError(errorMsg);
             // Still fetch logs once for failed state
             fetch('http://roost-dev.' + tld + '/api/logs?name=' + encodeURIComponent(appName))
                 .then(r => r.json())
@@ -283,7 +287,16 @@ func interstitialPage(appName, tld string, failed bool, errorMsg string) string 
         }
     </script>
 </body>
-</html>`, statusText, appName, asciiLogo, appName, statusText, appName, tld, failed, errorMsg)
+</html>`,
+		statusText,                  // title
+		html.EscapeString(appName),  // title
+		html.EscapeString(errorMsg), // data-error attribute
+		html.EscapeString(appName),  // data-app attribute
+		html.EscapeString(tld),      // data-tld attribute
+		asciiLogo,                   // logo (hardcoded, safe)
+		html.EscapeString(appName),  // h1
+		statusText,                  // status text
+		failed)                      // JS boolean
 }
 
 // Server is the main roost-dev server
