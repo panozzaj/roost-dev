@@ -220,36 +220,12 @@ func (m *Manager) Start(name, command, dir string, env map[string]string) (*Proc
 		proc.mu.Lock()
 		if err != nil {
 			proc.failed = true
-			// Get last few log lines for error context
-			lines := proc.logs.Lines()
-			var lastLines string
-			if len(lines) > 0 {
-				start := len(lines) - 3
-				if start < 0 {
-					start = 0
-				}
-				for _, l := range lines[start:] {
-					// Skip roost-dev internal messages
-					if !strings.HasPrefix(l, "[roost-dev]") {
-						if lastLines != "" {
-							lastLines += " | "
-						}
-						// Truncate long lines
-						if len(l) > 80 {
-							l = l[:77] + "..."
-						}
-						lastLines += l
-					}
-				}
-			}
-			if lastLines != "" {
-				proc.exitError = lastLines
-			} else if exitErr, ok := err.(*exec.ExitError); ok {
+			if exitErr, ok := err.(*exec.ExitError); ok {
 				proc.exitError = fmt.Sprintf("exit code %d", exitErr.ExitCode())
 			} else {
 				proc.exitError = err.Error()
 			}
-			proc.logs.Write([]byte(fmt.Sprintf("[roost-dev] Process exited: %s\n", proc.exitError)))
+			proc.logs.Write([]byte("[roost-dev] Process exited\n"))
 		}
 		proc.mu.Unlock()
 		// Don't delete failed processes so we can show their status
@@ -388,33 +364,12 @@ func (m *Manager) StartAsync(name, command, dir string, env map[string]string) (
 		proc.mu.Lock()
 		if err != nil {
 			proc.failed = true
-			lines := proc.logs.Lines()
-			var lastLines string
-			if len(lines) > 0 {
-				start := len(lines) - 3
-				if start < 0 {
-					start = 0
-				}
-				for _, l := range lines[start:] {
-					if !strings.HasPrefix(l, "[roost-dev]") {
-						if lastLines != "" {
-							lastLines += " | "
-						}
-						if len(l) > 80 {
-							l = l[:77] + "..."
-						}
-						lastLines += l
-					}
-				}
-			}
-			if lastLines != "" {
-				proc.exitError = lastLines
-			} else if exitErr, ok := err.(*exec.ExitError); ok {
+			if exitErr, ok := err.(*exec.ExitError); ok {
 				proc.exitError = fmt.Sprintf("exit code %d", exitErr.ExitCode())
 			} else {
 				proc.exitError = err.Error()
 			}
-			proc.logs.Write([]byte(fmt.Sprintf("[roost-dev] Process exited: %s\n", proc.exitError)))
+			proc.logs.Write([]byte("[roost-dev] Process exited\n"))
 		}
 		proc.mu.Unlock()
 	}()
