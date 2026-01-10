@@ -183,11 +183,14 @@ const indexHTML = `<!DOCTYPE html>
             transition: transform 0.1s;
         }
         .status-dot:hover {
-            transform: scale(1.3);
+            transform: scale(1.5);
+            box-shadow: 0 0 8px currentColor;
         }
         .status-dot-wrapper {
             position: relative;
             display: inline-block;
+            padding: 8px;
+            margin: -8px;
         }
         .status-menu {
             position: absolute;
@@ -322,6 +325,11 @@ const indexHTML = `<!DOCTYPE html>
         .service-name {
             font-size: 14px;
             color: var(--text-secondary);
+        }
+        .service-meta {
+            display: flex;
+            align-items: center;
+            gap: 12px;
         }
         .app-error {
             font-size: 12px;
@@ -599,14 +607,30 @@ echo "npm run dev" > ~/.config/roost-dev/myapp
                 for (const svc of app.services) {
                     const svcStatus = svc.failed ? 'failed' : (svc.running ? 'running' : (svc.starting ? 'starting' : 'idle'));
                     const svcName = slugify(svc.name) + '-' + app.name;
-                    const svcEl = el.querySelector(` + "`" + `.service-info .status-dot[onclick*="${svcName}"]` + "`" + `)?.closest('.service');
+                    const svcEl = el.querySelector(` + "`" + `.status-dot[onclick*="${svcName}"]` + "`" + `)?.closest('.service');
                     if (svcEl) {
                         const svcDot = svcEl.querySelector('.status-dot');
                         if (svcDot) svcDot.className = 'status-dot ' + svcStatus;
-                        const svcPort = svcEl.querySelector('.app-port');
-                        if (svcPort) svcPort.textContent = svc.port ? ':' + svc.port : '';
-                        const svcUptime = svcEl.querySelector('.app-uptime');
-                        if (svcUptime) svcUptime.textContent = svc.uptime || '';
+                        const svcMeta = svcEl.querySelector('.service-meta');
+                        if (svcMeta) {
+                            const svcPort = svcMeta.querySelector('.app-port');
+                            if (svcPort) svcPort.textContent = svc.port ? ':' + svc.port : '';
+                            const svcUptime = svcMeta.querySelector('.app-uptime');
+                            if (svcUptime) svcUptime.textContent = svc.uptime || '';
+                        }
+                        // Update or remove error message
+                        const svcInfo = svcEl.querySelector('.service-info');
+                        let svcError = svcInfo?.querySelector('.app-error');
+                        if (svc.error) {
+                            if (!svcError) {
+                                svcError = document.createElement('span');
+                                svcError.className = 'app-error';
+                                svcInfo.appendChild(svcError);
+                            }
+                            svcError.textContent = svc.error;
+                        } else if (svcError) {
+                            svcError.remove();
+                        }
                     }
                 }
             }
@@ -633,24 +657,26 @@ echo "npm run dev" > ~/.config/roost-dev/myapp
                             <div class="service">
                                 <div class="service-info">
                                     <div class="status-dot-wrapper">
-                                        <div class="status-dot ${svcStatus}" onclick="event.stopPropagation(); handleDotClick('${svcName}', '${svcStatus}', event)"></div>
-                                        ${svcStatus === 'running' ? ` + "`" + `<div class="status-menu" id="menu-${svcName}">
+                                        <div class="status-dot ${svcStatus}" onclick="event.stopPropagation(); handleDotClick('${svcName}', event)"></div>
+                                        <div class="status-menu" id="menu-${svcName}-active">
                                             <button onclick="event.stopPropagation(); doRestart('${svcName}', event)">Restart</button>
                                             <button class="danger" onclick="event.stopPropagation(); doStop('${svcName}')">Stop</button>
-                                        </div>` + "`" + ` : ''}
-                                        ${svcStatus === 'failed' ? ` + "`" + `<div class="status-menu" id="menu-${svcName}">
+                                        </div>
+                                        <div class="status-menu" id="menu-${svcName}-failed">
                                             <button onclick="event.stopPropagation(); doRestart('${svcName}', event)">Restart</button>
                                             <button onclick="event.stopPropagation(); doClear('${svcName}')">Clear</button>
-                                        </div>` + "`" + ` : ''}
+                                        </div>
                                     </div>
                                     <span class="service-name">${svc.name}</span>
-                                    <span class="app-port">${svc.port ? ':' + svc.port : ''}</span>
-                                    <span class="app-uptime">${svc.uptime || ''}</span>
                                     ${svc.error ? ` + "`" + `<span class="app-error">${svc.error}</span>` + "`" + ` : ''}
                                 </div>
-                                <a class="app-url external-link" href="http://${svcName}.${TLD}${portSuffix}" target="_blank" rel="noopener">
-                                    ${svcName}.${TLD} ${externalLinkIcon}
-                                </a>
+                                <div class="service-meta">
+                                    <span class="app-port">${svc.port ? ':' + svc.port : ''}</span>
+                                    <span class="app-uptime">${svc.uptime || ''}</span>
+                                    <a class="app-url external-link" href="http://${svcName}.${TLD}${portSuffix}" target="_blank" rel="noopener">
+                                        ${svcName}.${TLD} ${externalLinkIcon}
+                                    </a>
+                                </div>
                             </div>
                         ` + "`" + `}).join('')}
                     </div>
@@ -662,19 +688,18 @@ echo "npm run dev" > ~/.config/roost-dev/myapp
                     <div class="app-header" onclick="toggleLogs('${app.name}')">
                         <div class="app-info">
                             <div class="status-dot-wrapper">
-                                <div class="status-dot ${statusClass}" onclick="event.stopPropagation(); handleDotClick('${app.name}', '${statusClass}', event)"></div>
-                                ${statusClass === 'running' ? ` + "`" + `<div class="status-menu" id="menu-${app.name}">
+                                <div class="status-dot ${statusClass}" onclick="event.stopPropagation(); handleDotClick('${app.name}', event)"></div>
+                                <div class="status-menu" id="menu-${app.name}-active">
                                     <button onclick="event.stopPropagation(); doRestart('${app.name}', event)">Restart</button>
                                     <button class="danger" onclick="event.stopPropagation(); doStop('${app.name}')">Stop</button>
-                                </div>` + "`" + ` : ''}
-                                ${statusClass === 'failed' ? ` + "`" + `<div class="status-menu" id="menu-${app.name}">
+                                </div>
+                                <div class="status-menu" id="menu-${app.name}-failed">
                                     <button onclick="event.stopPropagation(); doRestart('${app.name}', event)">Restart</button>
                                     <button onclick="event.stopPropagation(); doClear('${app.name}')">Clear</button>
-                                </div>` + "`" + ` : ''}
+                                </div>
                             </div>
                             <span class="app-name">${displayName}</span>
-                            ${app.description ? ` + "`" + `<span class="app-description">(${app.name})</span>` + "`" + ` : ''}
-                            <span class="app-type">${app.type}</span>
+                            ${app.type !== 'multi-service' ? ` + "`" + `<span class="app-type">${app.type}</span>` + "`" + ` : ''}
                             ${app.aliases && app.aliases.length ? ` + "`" + `<span class="app-aliases">aka ${app.aliases.join(', ')}</span>` + "`" + ` : ''}
                         </div>
                         <div class="app-meta">
@@ -765,15 +790,22 @@ echo "npm run dev" > ~/.config/roost-dev/myapp
             document.querySelectorAll('.status-menu').forEach(m => m.classList.remove('visible'));
         }
 
-        function handleDotClick(name, status, event) {
+        function handleDotClick(name, event) {
             event.stopPropagation();
             closeAllMenus();
 
-            if (status === 'running' || status === 'failed') {
-                const menu = document.getElementById('menu-' + name);
+            const dot = event.target;
+            const isRunning = dot.classList.contains('running');
+            const isStarting = dot.classList.contains('starting');
+            const isFailed = dot.classList.contains('failed');
+
+            if (isRunning || isStarting) {
+                const menu = document.getElementById('menu-' + name + '-active');
+                if (menu) menu.classList.add('visible');
+            } else if (isFailed) {
+                const menu = document.getElementById('menu-' + name + '-failed');
                 if (menu) menu.classList.add('visible');
             } else {
-                const dot = event.target;
                 dot.className = 'status-dot starting';
                 start(name);
             }
