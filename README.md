@@ -79,6 +79,19 @@ Access at `http://frontend-myproject.localhost` and `http://backend-myproject.lo
 
 Services with `depends_on` will automatically start their dependencies first.
 
+### Multiple ports
+
+Some tools need multiple ports (e.g., Jekyll with livereload). Use shell arithmetic on `$PORT`:
+
+```yaml
+# ~/.config/roost-dev/blog.yml
+name: blog
+root: ~/projects/blog
+cmd: bundle exec jekyll serve --port $PORT --host 127.0.0.1 --livereload-port $((PORT + 10000)) --watch
+```
+
+Using a large offset (like 10000) avoids conflicts with manually-run instances that use default ports.
+
 ## Subdomains
 
 Subdomains are passed through to your app:
