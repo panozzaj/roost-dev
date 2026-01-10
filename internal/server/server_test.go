@@ -11,9 +11,10 @@ import (
 // newTestServer creates a server with injected dependencies for testing
 func newTestServer(cfg *config.Config, apps *config.AppStore, procs *process.Manager) *Server {
 	return &Server{
-		cfg:   cfg,
-		apps:  apps,
-		procs: procs,
+		cfg:         cfg,
+		apps:        apps,
+		procs:       procs,
+		broadcaster: NewBroadcaster(),
 	}
 }
 

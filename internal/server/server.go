@@ -158,7 +158,11 @@ func interstitialPage(appName, tld string, failed bool, errorMsg string) string 
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 8px;
+            padding-bottom: 8px;
+            position: sticky;
+            top: 0;
+            background: #0f172a;
+            z-index: 1;
         }
         .copy-btn {
             padding: 4px 12px;
@@ -244,7 +248,10 @@ func interstitialPage(appName, tld string, failed bool, errorMsg string) string 
             const statusEl = document.getElementById('status');
             statusEl.textContent = 'Failed to start' + (msg ? ': ' + msg : '');
             statusEl.classList.add('error');
-            document.getElementById('retry-btn').style.display = 'inline-block';
+            const btn = document.getElementById('retry-btn');
+            btn.style.display = 'inline-block';
+            btn.disabled = false;
+            btn.textContent = 'Restart';
         }
 
         async function copyLogs() {
@@ -264,7 +271,10 @@ func interstitialPage(appName, tld string, failed bool, errorMsg string) string 
             btn.textContent = 'Restarting...';
             btn.disabled = true;
             try {
-                await fetch('http://roost-dev.' + tld + '/api/restart?name=' + encodeURIComponent(appName));
+                const res = await fetch('http://roost-dev.' + tld + '/api/restart?name=' + encodeURIComponent(appName));
+                if (!res.ok) {
+                    throw new Error('Restart API returned ' + res.status);
+                }
                 // Reset UI to starting state
                 failed = false;
                 lastLogCount = 0;
@@ -275,11 +285,12 @@ func interstitialPage(appName, tld string, failed bool, errorMsg string) string 
                 btn.style.display = 'none';
                 btn.textContent = 'Restart';
                 btn.disabled = false;
-                // Start polling for new status
-                poll();
+                // Wait for restart to complete (server has 500ms internal delay)
+                setTimeout(poll, 700);
             } catch (e) {
                 btn.textContent = 'Restart';
                 btn.disabled = false;
+                document.getElementById('status').textContent = 'Restart failed: ' + e.message;
                 console.error('Restart failed:', e);
             }
         }
