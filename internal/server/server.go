@@ -14,6 +14,11 @@ import (
 	"github.com/panozzaj/roost-dev/internal/ui"
 )
 
+// slugify converts a name to a URL-safe slug (lowercase, spaces to dashes)
+func slugify(name string) string {
+	return strings.ToLower(strings.ReplaceAll(name, " ", "-"))
+}
+
 const asciiLogo = `
     ___  ___  ___  ____ _____      ___  ____ _  _
     |__| |  | |  | [__   |   ____ |  \ |___ |  |
@@ -568,7 +573,7 @@ func (s *Server) handleApp(w http.ResponseWriter, r *http.Request, app *config.A
 		w.Header().Set("Content-Type", "text/html")
 		fmt.Fprintf(w, "<h1>%s</h1>\n<p>Available services:</p>\n<ul>\n", app.Name)
 		for _, svc := range app.Services {
-			url := fmt.Sprintf("http://%s-%s.%s", svc.Name, app.Name, s.cfg.TLD)
+			url := fmt.Sprintf("http://%s-%s.%s", slugify(svc.Name), app.Name, s.cfg.TLD)
 			fmt.Fprintf(w, "<li><a href=\"%s\">%s</a></li>\n", url, svc.Name)
 		}
 		fmt.Fprintf(w, "</ul>\n")
@@ -592,7 +597,7 @@ func (s *Server) ensureDependencies(app *config.App, svc *config.Service) {
 		if dep == nil {
 			continue // Skip unknown dependencies
 		}
-		procName := fmt.Sprintf("%s-%s", dep.Name, app.Name)
+		procName := fmt.Sprintf("%s-%s", slugify(dep.Name), app.Name)
 		proc, found := s.procs.Get(procName)
 		if !found || (!proc.IsRunning() && !proc.IsStarting()) {
 			// Start the dependency
@@ -603,7 +608,7 @@ func (s *Server) ensureDependencies(app *config.App, svc *config.Service) {
 
 // handleService handles a request for a service within a multi-service app
 func (s *Server) handleService(w http.ResponseWriter, r *http.Request, app *config.App, svc *config.Service) {
-	procName := fmt.Sprintf("%s-%s", svc.Name, app.Name)
+	procName := fmt.Sprintf("%s-%s", slugify(svc.Name), app.Name)
 	s.logRequest("handleService: %s (path=%s)", procName, r.URL.Path)
 
 	// Start dependencies first
@@ -673,7 +678,7 @@ func (s *Server) startByName(name string) {
 			for i := range app.Services {
 				svc := &app.Services[i]
 				s.ensureDependencies(app, svc)
-				procName := fmt.Sprintf("%s-%s", svc.Name, app.Name)
+				procName := fmt.Sprintf("%s-%s", slugify(svc.Name), app.Name)
 				s.procs.StartAsync(procName, svc.Command, svc.Dir, svc.Env)
 			}
 		}
@@ -687,7 +692,7 @@ func (s *Server) startByName(name string) {
 		}
 		for i := range app.Services {
 			svc := &app.Services[i]
-			procName := fmt.Sprintf("%s-%s", svc.Name, app.Name)
+			procName := fmt.Sprintf("%s-%s", slugify(svc.Name), app.Name)
 			if procName == name {
 				// Start dependencies first
 				s.ensureDependencies(app, svc)
@@ -739,7 +744,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 			} else if app, found := s.apps.Get(name); found && app.Type == config.AppTypeYAML {
 				// Stop all services for multi-service app
 				for _, svc := range app.Services {
-					procName := fmt.Sprintf("%s-%s", svc.Name, app.Name)
+					procName := fmt.Sprintf("%s-%s", slugify(svc.Name), app.Name)
 					s.procs.Stop(procName)
 				}
 			}
@@ -763,7 +768,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 				// Restart all services for multi-service app
 				for i := range app.Services {
 					svc := &app.Services[i]
-					procName := fmt.Sprintf("%s-%s", svc.Name, app.Name)
+					procName := fmt.Sprintf("%s-%s", slugify(svc.Name), app.Name)
 					if proc, found := s.procs.Get(procName); found {
 						s.procs.Restart(proc.Name)
 					} else {
@@ -806,7 +811,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 			// For multi-service apps, aggregate logs from all services
 			if app, found := s.apps.Get(name); found && app.Type == config.AppTypeYAML {
 				for _, svc := range app.Services {
-					procName := fmt.Sprintf("%s-%s", svc.Name, app.Name)
+					procName := fmt.Sprintf("%s-%s", slugify(svc.Name), app.Name)
 					if proc, found := s.procs.Get(procName); found {
 						for _, line := range proc.Logs().Lines() {
 							allLogs = append(allLogs, fmt.Sprintf("[%s] %s", svc.Name, line))
@@ -946,6 +951,7 @@ func (s *Server) handleAPIStatus(w http.ResponseWriter, r *http.Request) {
 					as.Uptime = proc.Uptime().Round(1e9).String()
 				} else if proc.IsStarting() {
 					as.Starting = true
+					as.Port = proc.Port
 				} else if proc.HasFailed() {
 					as.Failed = true
 					as.Error = proc.ExitError()
@@ -961,7 +967,7 @@ func (s *Server) handleAPIStatus(w http.ResponseWriter, r *http.Request) {
 			// Keep base URL (app.test) - default service routes there automatically
 			for _, svc := range app.Services {
 				ss := serviceStatus{Name: svc.Name}
-				procName := fmt.Sprintf("%s-%s", svc.Name, app.Name)
+				procName := fmt.Sprintf("%s-%s", slugify(svc.Name), app.Name)
 				if proc, found := s.procs.Get(procName); found {
 					if proc.IsRunning() {
 						ss.Running = true
@@ -969,6 +975,7 @@ func (s *Server) handleAPIStatus(w http.ResponseWriter, r *http.Request) {
 						ss.Uptime = proc.Uptime().Round(1e9).String()
 					} else if proc.IsStarting() {
 						ss.Starting = true
+						ss.Port = proc.Port
 					} else if proc.HasFailed() {
 						ss.Failed = true
 						ss.Error = proc.ExitError()
@@ -1094,6 +1101,7 @@ func (s *Server) getStatusJSON() []byte {
 					as.Uptime = proc.Uptime().Round(1e9).String()
 				} else if proc.IsStarting() {
 					as.Starting = true
+					as.Port = proc.Port
 				} else if proc.HasFailed() {
 					as.Failed = true
 					as.Error = proc.ExitError()
@@ -1108,7 +1116,7 @@ func (s *Server) getStatusJSON() []byte {
 			as.Type = "multi-service"
 			for _, svc := range app.Services {
 				ss := serviceStatus{Name: svc.Name}
-				procName := fmt.Sprintf("%s-%s", svc.Name, app.Name)
+				procName := fmt.Sprintf("%s-%s", slugify(svc.Name), app.Name)
 				if proc, found := s.procs.Get(procName); found {
 					if proc.IsRunning() {
 						ss.Running = true
@@ -1116,6 +1124,7 @@ func (s *Server) getStatusJSON() []byte {
 						ss.Uptime = proc.Uptime().Round(1e9).String()
 					} else if proc.IsStarting() {
 						ss.Starting = true
+						ss.Port = proc.Port
 					} else if proc.HasFailed() {
 						ss.Failed = true
 						ss.Error = proc.ExitError()

@@ -245,6 +245,12 @@ func (s *AppStore) loadYAMLApp(name, path string) (*App, error) {
 	// Multi-service
 	var services []Service
 	for svcName, svcCfg := range yamlCfg.Services {
+		// Validate service name - no spaces allowed (breaks subdomain parsing)
+		if strings.Contains(svcName, " ") {
+			fmt.Printf("Warning: skipping service %q in %s (spaces not allowed in service names)\n", svcName, appName)
+			continue
+		}
+
 		svcDir := root
 		if svcCfg.Dir != "" {
 			svcDir = filepath.Join(root, svcCfg.Dir)

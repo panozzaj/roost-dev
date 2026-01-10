@@ -297,6 +297,11 @@ const indexHTML = `<!DOCTYPE html>
             font-size: 14px;
             color: var(--text-muted);
         }
+        .app-uptime {
+            font-size: 13px;
+            color: var(--text-muted);
+            min-width: 40px;
+        }
         .services {
             padding: 0 20px 16px 42px;
         }
@@ -424,6 +429,11 @@ const indexHTML = `<!DOCTYPE html>
         let eventSource = null;
 
         const externalLinkIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.25 5.5a.75.75 0 00-.75.75v8.5c0 .414.336.75.75.75h8.5a.75.75 0 00.75-.75v-4a.75.75 0 011.5 0v4A2.25 2.25 0 0112.75 17h-8.5A2.25 2.25 0 012 14.75v-8.5A2.25 2.25 0 014.25 4h5a.75.75 0 010 1.5h-5z" clip-rule="evenodd" /><path fill-rule="evenodd" d="M6.194 12.753a.75.75 0 001.06.053L16.5 4.44v2.81a.75.75 0 001.5 0v-4.5a.75.75 0 00-.75-.75h-4.5a.75.75 0 000 1.5h2.553l-9.056 8.194a.75.75 0 00-.053 1.06z" clip-rule="evenodd" /></svg>';
+
+        // Convert name to URL-safe slug (spaces to dashes, lowercase)
+        function slugify(name) {
+            return name.toLowerCase().replace(/ /g, '-');
+        }
 
         // Theme management
         function getTheme() {
@@ -572,19 +582,31 @@ echo "npm run dev" > ~/.config/roost-dev/myapp
                 appDot.className = 'status-dot ' + statusClass;
             }
 
+            // Update port
+            const portEl = el.querySelector('.app-port');
+            if (portEl) {
+                portEl.textContent = app.port ? ':' + app.port : '';
+            }
+
             // Update uptime
-            const uptimeEl = el.querySelector('.app-port');
-            if (uptimeEl && app.uptime) {
-                uptimeEl.textContent = app.uptime;
+            const uptimeEl = el.querySelector('.app-uptime');
+            if (uptimeEl) {
+                uptimeEl.textContent = app.uptime || '';
             }
 
             // Update services
             if (app.services) {
                 for (const svc of app.services) {
                     const svcStatus = svc.failed ? 'failed' : (svc.running ? 'running' : (svc.starting ? 'starting' : 'idle'));
-                    const svcDot = el.querySelector(` + "`" + `.service-info .status-dot[onclick*="${svc.name}-${app.name}"]` + "`" + `);
-                    if (svcDot) {
-                        svcDot.className = 'status-dot ' + svcStatus;
+                    const svcName = slugify(svc.name) + '-' + app.name;
+                    const svcEl = el.querySelector(` + "`" + `.service-info .status-dot[onclick*="${svcName}"]` + "`" + `)?.closest('.service');
+                    if (svcEl) {
+                        const svcDot = svcEl.querySelector('.status-dot');
+                        if (svcDot) svcDot.className = 'status-dot ' + svcStatus;
+                        const svcPort = svcEl.querySelector('.app-port');
+                        if (svcPort) svcPort.textContent = svc.port ? ':' + svc.port : '';
+                        const svcUptime = svcEl.querySelector('.app-uptime');
+                        if (svcUptime) svcUptime.textContent = svc.uptime || '';
                     }
                 }
             }
@@ -605,7 +627,8 @@ echo "npm run dev" > ~/.config/roost-dev/myapp
                     <div class="services">
                         ${app.services.map(svc => {
                             const svcStatus = getServiceStatus(svc);
-                            const svcName = svc.name + '-' + app.name;
+                            const svcSlug = slugify(svc.name);
+                            const svcName = svcSlug + '-' + app.name;
                             return ` + "`" + `
                             <div class="service">
                                 <div class="service-info">
@@ -621,11 +644,12 @@ echo "npm run dev" > ~/.config/roost-dev/myapp
                                         </div>` + "`" + ` : ''}
                                     </div>
                                     <span class="service-name">${svc.name}</span>
-                                    ${svc.port ? ` + "`" + `<span class="app-port">:${svc.port}</span>` + "`" + ` : ''}
+                                    <span class="app-port">${svc.port ? ':' + svc.port : ''}</span>
+                                    <span class="app-uptime">${svc.uptime || ''}</span>
                                     ${svc.error ? ` + "`" + `<span class="app-error">${svc.error}</span>` + "`" + ` : ''}
                                 </div>
-                                <a class="app-url external-link" href="http://${svc.name}-${app.name}.${TLD}${portSuffix}" target="_blank" rel="noopener">
-                                    ${svc.name}-${app.name}.${TLD} ${externalLinkIcon}
+                                <a class="app-url external-link" href="http://${svcName}.${TLD}${portSuffix}" target="_blank" rel="noopener">
+                                    ${svcName}.${TLD} ${externalLinkIcon}
                                 </a>
                             </div>
                         ` + "`" + `}).join('')}
@@ -654,8 +678,8 @@ echo "npm run dev" > ~/.config/roost-dev/myapp
                             ${app.aliases && app.aliases.length ? ` + "`" + `<span class="app-aliases">aka ${app.aliases.join(', ')}</span>` + "`" + ` : ''}
                         </div>
                         <div class="app-meta">
-                            ${app.port ? ` + "`" + `<span class="app-port">:${app.port}</span>` + "`" + ` : ''}
-                            ${app.uptime ? ` + "`" + `<span class="app-port">${app.uptime}</span>` + "`" + ` : ''}
+                            <span class="app-port">${app.port ? ':' + app.port : ''}</span>
+                            <span class="app-uptime">${app.uptime || ''}</span>
                             <a class="app-url external-link" href="${app.url}" target="_blank" rel="noopener" onclick="event.stopPropagation()">
                                 ${app.name}.${TLD} ${externalLinkIcon}
                             </a>
