@@ -389,8 +389,9 @@ const indexHTML = `<!DOCTYPE html>
             background-size: 200%% 100%%;
             background-position: 100%% 0;
             color: inherit;
-            padding: 0;
-            border-radius: 2px;
+            padding: 0.15em 0;
+            margin: -0.15em 0;
+            border-radius: 0;
             animation: highlightSweep 0.5s ease-out forwards;
         }
         @keyframes highlightSweep {
