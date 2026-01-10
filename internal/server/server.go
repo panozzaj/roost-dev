@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"html/template"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	"github.com/panozzaj/roost-dev/internal/ollama"
 	"github.com/panozzaj/roost-dev/internal/process"
 	"github.com/panozzaj/roost-dev/internal/proxy"
+	"github.com/panozzaj/roost-dev/internal/styles"
 	"github.com/panozzaj/roost-dev/internal/ui"
 )
 
@@ -24,374 +26,500 @@ func slugify(name string) string {
 	return strings.ToLower(strings.ReplaceAll(name, " ", "-"))
 }
 
-func errorPage(title, message, hint, tld, theme string) string {
-	return fmt.Sprintf(`<!DOCTYPE html>
+// errorPageData holds data for the error page template
+type errorPageData struct {
+	Title       string
+	Message     string
+	Hint        template.HTML
+	TLD         string
+	ThemeScript template.HTML
+	ThemeCSS    template.CSS
+	PageCSS     template.CSS
+	Logo        template.HTML
+}
+
+var errorPageTmpl = template.Must(template.New("error").Parse(`<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>%s</title>
-    <script>
-        (function() {
-            var theme = '%s';
-            if (theme && theme !== 'system') {
-                document.documentElement.setAttribute('data-theme', theme);
-            }
-        })();
-    </script>
+    <title>{{.Title}}</title>
+{{.ThemeScript}}
     <style>
-        :root {
-            --bg-primary: #1a1a2e;
-            --text-primary: #eee;
-            --text-secondary: #9ca3af;
-            --text-muted: #6b7280;
-            --border-color: #374151;
-        }
-        @media (prefers-color-scheme: light) {
-            :root:not([data-theme="dark"]) {
-                --bg-primary: #f5f5f5;
-                --text-primary: #1a1a1a;
-                --text-secondary: #4b5563;
-                --text-muted: #6b7280;
-                --border-color: #e5e7eb;
-            }
-        }
-        [data-theme="light"] {
-            --bg-primary: #f5f5f5;
-            --text-primary: #1a1a1a;
-            --text-secondary: #4b5563;
-            --text-muted: #6b7280;
-            --border-color: #e5e7eb;
-        }
-        [data-theme="dark"] {
-            --bg-primary: #1a1a2e;
-            --text-primary: #eee;
-            --text-secondary: #9ca3af;
-            --text-muted: #6b7280;
-            --border-color: #374151;
-        }
-        * { box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            margin: 0;
-            padding: 60px 40px 40px;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        .container {
-            text-align: center;
-            max-width: 700px;
-            width: 100%%;
-        }
-        .logo {
-            font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
-            font-size: 12px;
-            white-space: pre;
-            margin-bottom: 40px;
-            -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
-        }
-        .logo a {
-            color: var(--text-muted);
-            text-decoration: none;
-            transition: color 0.3s;
-        }
-        .logo a:hover {
-            background: linear-gradient(90deg, #ff6b6b, #feca57, #48dbfb, #ff9ff3, #54a0ff, #5f27cd);
-            background-size: 200%% auto;
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
-            animation: rainbow 2s linear infinite;
-        }
-        @keyframes rainbow {
-            0%% { background-position: 0%% center; }
-            100%% { background-position: 200%% center; }
-        }
-        h1 {
-            font-size: 24px;
-            margin: 0 0 16px 0;
-            color: var(--text-primary);
-        }
-        .message {
-            font-size: 16px;
-            color: var(--text-secondary);
-            margin-bottom: 16px;
-        }
-        .hint {
-            font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
-            font-size: 13px;
-            color: var(--text-muted);
-            background: var(--border-color);
-            padding: 12px 16px;
-            border-radius: 6px;
-            display: inline-block;
-        }
+{{.ThemeCSS}}
+{{.PageCSS}}
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="logo"><a href="http://roost-dev.%s">%s</a></div>
-        <h1>%s</h1>
-        <p class="message">%s</p>
-        %s
+        <div class="logo"><a href="http://roost-dev.{{.TLD}}">{{.Logo}}</a></div>
+        <h1>{{.Title}}</h1>
+        <p class="message">{{.Message}}</p>
+        {{.Hint}}
     </div>
 </body>
-</html>`,
-		html.EscapeString(title),
-		theme,
-		html.EscapeString(tld),
-		logo.Web(),
-		html.EscapeString(title),
-		html.EscapeString(message),
-		hint)
+</html>
+`))
+
+const errorPageCSS = `
+body {
+    padding: 60px 40px 40px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.container {
+    text-align: center;
+    max-width: 700px;
+    width: 100%;
+}
+.logo {
+    font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+    font-size: 12px;
+    white-space: pre;
+    margin-bottom: 40px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+.logo a {
+    color: var(--text-muted);
+    text-decoration: none;
+    transition: color 0.3s;
+}
+.logo a:hover {
+    background: linear-gradient(90deg, #ff6b6b, #feca57, #48dbfb, #ff9ff3, #54a0ff, #5f27cd);
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: rainbow 2s linear infinite;
+}
+@keyframes rainbow {
+    0% { background-position: 0% center; }
+    100% { background-position: 200% center; }
+}
+h1 {
+    font-size: 24px;
+    margin: 0 0 16px 0;
+    color: var(--text-primary);
+}
+.message {
+    font-size: 16px;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+}
+.hint {
+    font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+    font-size: 13px;
+    color: var(--text-muted);
+    background: var(--border-color);
+    padding: 12px 16px;
+    border-radius: 6px;
+    display: inline-block;
+}
+`
+
+func errorPage(title, message, hint, tld, theme string) string {
+	var b strings.Builder
+	data := errorPageData{
+		Title:       title,
+		Message:     message,
+		Hint:        template.HTML(hint),
+		TLD:         tld,
+		ThemeScript: template.HTML(styles.ThemeScript(theme)),
+		ThemeCSS:    template.CSS(styles.ThemeVars + styles.BaseStyles),
+		PageCSS:     template.CSS(errorPageCSS),
+		Logo:        template.HTML(logo.Web()),
+	}
+	errorPageTmpl.Execute(&b, data)
+	return b.String()
 }
 
-func interstitialPage(appName, tld, theme string, failed bool, errorMsg string) string {
-	statusText := "Starting"
-	if failed {
-		statusText = "Failed to start"
-	}
-	return fmt.Sprintf(`<!DOCTYPE html>
+// interstitialCSS contains page-specific CSS for the interstitial page
+// No %% escaping needed since this isn't used with fmt.Sprintf
+const interstitialCSS = `
+body {
+    padding: 60px 40px 40px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.container {
+    text-align: center;
+    max-width: 700px;
+    width: 100%;
+}
+.logo {
+    font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+    font-size: 12px;
+    white-space: pre;
+    margin-bottom: 40px;
+    letter-spacing: 0;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+.logo a {
+    color: var(--text-muted);
+    text-decoration: none;
+    transition: color 0.3s;
+}
+.logo a:hover {
+    background: linear-gradient(90deg, #ff6b6b, #feca57, #48dbfb, #ff9ff3, #54a0ff, #5f27cd);
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: rainbow 2s linear infinite;
+}
+@keyframes rainbow {
+    0% { background-position: 0% center; }
+    100% { background-position: 200% center; }
+}
+h1 {
+    font-size: 24px;
+    margin: 0 0 16px 0;
+    color: var(--text-primary);
+}
+.status {
+    font-size: 16px;
+    color: var(--text-secondary);
+    margin-bottom: 24px;
+}
+.status.error {
+    color: #f87171;
+    text-align: center;
+}
+.spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--border-color);
+    border-top-color: #22c55e;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 24px;
+}
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+.logs {
+    background: var(--bg-logs);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 16px;
+    text-align: left;
+    max-height: 350px;
+    overflow-y: auto;
+    margin-bottom: 24px;
+}
+.logs-title {
+    color: var(--text-secondary);
+    font-size: 12px;
+    margin-bottom: 8px;
+}
+.logs-content {
+    font-family: "SF Mono", Monaco, monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: var(--text-secondary);
+    min-height: 100px;
+}
+.logs-empty {
+    color: var(--text-muted);
+    font-style: italic;
+}
+.btn {
+    background: var(--btn-bg);
+    color: var(--text-primary);
+    border: none;
+    padding: 10px 24px;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+}
+.btn:hover {
+    background: var(--btn-hover);
+}
+.btn-primary {
+    background: #22c55e;
+    color: #fff;
+}
+.btn-primary:hover:not(:disabled) {
+    background: #16a34a;
+}
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+.retry-btn {
+    display: none;
+}
+.logs-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: sticky;
+    top: -16px;
+    background: var(--bg-logs);
+    z-index: 1;
+    margin: -16px -16px 8px -16px;
+    padding: 16px 16px 8px 16px;
+    border-bottom: 1px solid var(--border-color);
+}
+.logs-buttons {
+    display: flex;
+    gap: 8px;
+}
+.copy-btn {
+    padding: 4px 12px;
+    font-size: 12px;
+    margin-top: -4px;
+}
+`
+
+// interstitialScript contains the JavaScript for the interstitial page
+const interstitialScript = `
+const container = document.querySelector('.container');
+const appName = container.dataset.app;
+const tld = container.dataset.tld;
+let failed = container.dataset.failed === 'true';
+let lastLogCount = 0;
+const startTime = Date.now();
+const MIN_WAIT_MS = 500;
+
+function ansiToHtml(text) {
+    const colors = {
+        '30': '#000', '31': '#e74c3c', '32': '#2ecc71', '33': '#f1c40f',
+        '34': '#3498db', '35': '#9b59b6', '36': '#1abc9c', '37': '#ecf0f1',
+        '90': '#7f8c8d', '91': '#e74c3c', '92': '#2ecc71', '93': '#f1c40f',
+        '94': '#3498db', '95': '#9b59b6', '96': '#1abc9c', '97': '#fff'
+    };
+    let result = '';
+    let i = 0;
+    let openSpans = 0;
+    while (i < text.length) {
+        if (text[i] === '\x1b' && text[i+1] === '[') {
+            let j = i + 2;
+            while (j < text.length && text[j] !== 'm') j++;
+            const codes = text.slice(i+2, j).split(';');
+            i = j + 1;
+            for (const code of codes) {
+                if (code === '0' || code === '39' || code === '22' || code === '23') {
+                    if (openSpans > 0) { result += '</span>'; openSpans--; }
+                } else if (colors[code]) {
+                    result += '<span style="color:' + colors[code] + '">';
+                    openSpans++;
+                } else if (code === '1') {
+                    result += '<span style="font-weight:bold">';
+                    openSpans++;
+                } else if (code === '3') {
+                    result += '<span style="font-style:italic">';
+                    openSpans++;
+                }
+            }
+        } else {
+            const c = text[i];
+            if (c === '<') result += '&lt;';
+            else if (c === '>') result += '&gt;';
+            else if (c === '&') result += '&amp;';
+            else result += c;
+            i++;
+        }
+    }
+    while (openSpans-- > 0) result += '</span>';
+    return result;
+}
+
+function stripAnsi(text) {
+    return text.replace(/\x1b\[[0-9;]*m/g, '').replace(/\[\?25[hl]/g, '');
+}
+
+async function analyzeLogsWithAI(lines) {
+    try {
+        const res = await fetch('http://roost-dev.' + tld + '/api/analyze-logs?name=' + encodeURIComponent(appName));
+        const data = await res.json();
+        if (!data.enabled || data.error || !data.errorLines || data.errorLines.length === 0) return;
+        const errorSet = new Set(data.errorLines);
+        const content = document.getElementById('logs-content');
+        const highlighted = lines.map((line, idx) => {
+            const html = ansiToHtml(line);
+            return errorSet.has(idx) ? '<mark>' + html + '</mark>' : html;
+        }).join('\n');
+        content.innerHTML = highlighted;
+    } catch (e) {
+        console.log('AI analysis skipped:', e);
+    }
+}
+
+async function poll() {
+    try {
+        const [statusRes, logsRes] = await Promise.all([
+            fetch('http://roost-dev.' + tld + '/api/app-status?name=' + encodeURIComponent(appName)),
+            fetch('http://roost-dev.' + tld + '/api/logs?name=' + encodeURIComponent(appName))
+        ]);
+        const status = await statusRes.json();
+        const lines = await logsRes.json();
+        if (lines && lines.length > 0) {
+            const content = document.getElementById('logs-content');
+            content.innerHTML = ansiToHtml(lines.join('\n'));
+            if (lines.length > lastLogCount) {
+                const logsDiv = document.getElementById('logs');
+                logsDiv.scrollTop = logsDiv.scrollHeight;
+                lastLogCount = lines.length;
+            }
+        }
+        if (status.status === 'running') {
+            const elapsed = Date.now() - startTime;
+            if (elapsed < MIN_WAIT_MS) {
+                document.getElementById('status').textContent = 'Almost ready...';
+                setTimeout(poll, MIN_WAIT_MS - elapsed);
+                return;
+            }
+            document.getElementById('status').textContent = 'Ready! Redirecting...';
+            document.getElementById('spinner').style.borderTopColor = '#22c55e';
+            setTimeout(() => location.reload(), 300);
+            return;
+        } else if (status.status === 'failed') {
+            showError(status.error);
+            return;
+        }
+        setTimeout(poll, 200);
+    } catch (e) {
+        console.error('Poll failed:', e);
+        setTimeout(poll, 1000);
+    }
+}
+
+function showError(msg) {
+    document.getElementById('spinner').style.display = 'none';
+    const statusEl = document.getElementById('status');
+    statusEl.textContent = 'Failed to start' + (msg ? ': ' + stripAnsi(msg) : '');
+    statusEl.classList.add('error');
+    const btn = document.getElementById('retry-btn');
+    btn.style.display = 'inline-block';
+    btn.disabled = false;
+    btn.textContent = 'Restart';
+}
+
+function copyLogs() {
+    const content = document.getElementById('logs-content');
+    const btn = document.getElementById('copy-btn');
+    const text = content.textContent;
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textarea);
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 500);
+}
+
+function copyForAgent() {
+    const content = document.getElementById('logs-content');
+    const btn = document.getElementById('copy-agent-btn');
+    const logs = content.textContent;
+    const bt = String.fromCharCode(96);
+    const context = 'I am using roost-dev, a local development server that manages apps via config files in ~/.config/roost-dev/.\n\n' +
+        'The app "' + appName + '" failed to start. The config file is at:\n' +
+        '~/.config/roost-dev/' + appName + '.yml\n\n' +
+        'Here are the startup logs:\n\n' +
+        bt+bt+bt + '\n' + logs + '\n' + bt+bt+bt + '\n\n' +
+        'Please help me understand and fix this error.';
+    const textarea = document.createElement('textarea');
+    textarea.value = context;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textarea);
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy for agent', 500);
+}
+
+async function restartAndRetry() {
+    const btn = document.getElementById('retry-btn');
+    const statusEl = document.getElementById('status');
+    btn.textContent = 'Restarting...';
+    btn.disabled = true;
+    statusEl.textContent = 'Restarting...';
+    statusEl.classList.remove('error');
+    document.getElementById('spinner').style.display = 'block';
+    document.getElementById('logs-content').innerHTML = '<span class="logs-empty">Restarting...</span>';
+    try {
+        const url = 'http://roost-dev.' + tld + '/api/restart?name=' + encodeURIComponent(appName);
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('Restart API returned ' + res.status);
+        failed = false;
+        lastLogCount = 0;
+        statusEl.textContent = 'Starting...';
+        btn.style.display = 'none';
+        btn.textContent = 'Restart';
+        btn.disabled = false;
+        poll();
+    } catch (e) {
+        console.error('Restart failed:', e);
+        btn.textContent = 'Restart';
+        btn.disabled = false;
+        statusEl.textContent = 'Restart failed: ' + e.message;
+        statusEl.classList.add('error');
+        document.getElementById('spinner').style.display = 'none';
+    }
+}
+
+if (failed) {
+    const errorMsg = container.dataset.error || '';
+    showError(errorMsg);
+    fetch('http://roost-dev.' + tld + '/api/logs?name=' + encodeURIComponent(appName))
+        .then(r => r.json())
+        .then(lines => {
+            if (lines && lines.length > 0) {
+                document.getElementById('logs-content').innerHTML = ansiToHtml(lines.join('\n'));
+                analyzeLogsWithAI(lines);
+            }
+        });
+} else {
+    poll();
+}
+`
+
+// interstitialData holds data for the interstitial page template
+type interstitialData struct {
+	AppName     string
+	TLD         string
+	StatusText  string
+	Failed      bool
+	ErrorMsg    string
+	ThemeScript template.HTML
+	ThemeCSS    template.CSS
+	PageCSS     template.CSS
+	MarkCSS     template.CSS
+	Logo        template.HTML
+	Script      template.JS
+}
+
+var interstitialTmpl = template.Must(template.New("interstitial").Parse(`<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>%s %s</title>
-    <script>
-        (function() {
-            var theme = '%s'; // Server-injected theme
-            if (theme && theme !== 'system') {
-                document.documentElement.setAttribute('data-theme', theme);
-            }
-        })();
-    </script>
+    <title>{{.StatusText}} {{.AppName}}</title>
+{{.ThemeScript}}
     <style>
-        :root {
-            --bg-primary: #1a1a2e;
-            --bg-logs: #0f172a;
-            --text-primary: #eee;
-            --text-secondary: #9ca3af;
-            --text-muted: #6b7280;
-            --border-color: #374151;
-            --btn-bg: #374151;
-            --btn-hover: #4b5563;
-            --logs-text: #d1d5db;
-        }
-        @media (prefers-color-scheme: light) {
-            :root:not([data-theme="dark"]) {
-                --bg-primary: #f5f5f5;
-                --bg-logs: #ffffff;
-                --text-primary: #1a1a1a;
-                --text-secondary: #4b5563;
-                --text-muted: #6b7280;
-                --border-color: #e5e7eb;
-                --btn-bg: #e5e7eb;
-                --btn-hover: #d1d5db;
-                --logs-text: #374151;
-            }
-        }
-        [data-theme="light"] {
-            --bg-primary: #f5f5f5;
-            --bg-logs: #ffffff;
-            --text-primary: #1a1a1a;
-            --text-secondary: #4b5563;
-            --text-muted: #6b7280;
-            --border-color: #e5e7eb;
-            --btn-bg: #e5e7eb;
-            --btn-hover: #d1d5db;
-            --logs-text: #374151;
-        }
-        [data-theme="dark"] {
-            --bg-primary: #1a1a2e;
-            --bg-logs: #0f172a;
-            --text-primary: #eee;
-            --text-secondary: #9ca3af;
-            --text-muted: #6b7280;
-            --border-color: #374151;
-            --btn-bg: #374151;
-            --btn-hover: #4b5563;
-            --logs-text: #d1d5db;
-        }
-        * { box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            margin: 0;
-            padding: 60px 40px 40px;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        .container {
-            text-align: center;
-            max-width: 700px;
-            width: 100%%;
-        }
-        .logo {
-            font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
-            font-size: 12px;
-            white-space: pre;
-            margin-bottom: 40px;
-            letter-spacing: 0;
-            -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
-        }
-        .logo a {
-            color: var(--text-muted);
-            text-decoration: none;
-            transition: color 0.3s;
-        }
-        .logo a:hover {
-            background: linear-gradient(90deg, #ff6b6b, #feca57, #48dbfb, #ff9ff3, #54a0ff, #5f27cd);
-            background-size: 200%% auto;
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
-            animation: rainbow 2s linear infinite;
-        }
-        @keyframes rainbow {
-            0%% { background-position: 0%% center; }
-            100%% { background-position: 200%% center; }
-        }
-        h1 {
-            font-size: 24px;
-            margin: 0 0 16px 0;
-            color: var(--text-primary);
-        }
-        .status {
-            font-size: 16px;
-            color: var(--text-secondary);
-            margin-bottom: 24px;
-        }
-        .status.error {
-            color: #f87171;
-            text-align: center;
-        }
-        .spinner {
-            width: 40px;
-            height: 40px;
-            border: 3px solid var(--border-color);
-            border-top-color: #22c55e;
-            border-radius: 50%%;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 24px;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        .logs {
-            background: var(--bg-logs);
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            padding: 16px;
-            text-align: left;
-            max-height: 350px;
-            overflow-y: auto;
-            margin-bottom: 24px;
-        }
-        .logs-title {
-            color: var(--text-secondary);
-            font-size: 12px;
-            margin-bottom: 8px;
-        }
-        .logs-content {
-            font-family: "SF Mono", Monaco, monospace;
-            font-size: 12px;
-            line-height: 1.5;
-            white-space: pre-wrap;
-            word-break: break-all;
-            color: var(--logs-text);
-            min-height: 100px;
-        }
-        .logs-empty {
-            color: var(--text-muted);
-            font-style: italic;
-        }
-        .logs-content mark {
-            background: linear-gradient(90deg, #fef9c3 50%%, transparent 50%%);
-            background-size: 200%% 100%%;
-            background-position: 100%% 0;
-            color: inherit;
-            padding: 0.15em 0;
-            margin: -0.15em 0;
-            border-radius: 0;
-            animation: highlightSweep 0.5s ease-out forwards;
-        }
-        @keyframes highlightSweep {
-            from { background-position: 100%% 0; }
-            to { background-position: 0%% 0; }
-        }
-        @media (prefers-color-scheme: dark) {
-            :root:not([data-theme="light"]) .logs-content mark {
-                background: linear-gradient(90deg, #92702a 50%%, transparent 50%%);
-                background-size: 200%% 100%%;
-                background-position: 100%% 0;
-            }
-        }
-        [data-theme="dark"] .logs-content mark {
-            background: linear-gradient(90deg, #92702a 50%%, transparent 50%%);
-            background-size: 200%% 100%%;
-            background-position: 100%% 0;
-        }
-        .btn {
-            background: var(--btn-bg);
-            color: var(--text-primary);
-            border: none;
-            padding: 10px 24px;
-            border-radius: 6px;
-            font-size: 14px;
-            cursor: pointer;
-        }
-        .btn:hover {
-            background: var(--btn-hover);
-        }
-        .btn-primary {
-            background: #22c55e;
-            color: #fff;
-        }
-        .btn-primary:hover:not(:disabled) {
-            background: #16a34a;
-        }
-        .btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
-        .retry-btn {
-            display: none;
-        }
-        .logs-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            position: sticky;
-            top: -16px;
-            background: var(--bg-logs);
-            z-index: 1;
-            margin: -16px -16px 8px -16px;
-            padding: 16px 16px 8px 16px;
-            border-bottom: 1px solid var(--border-color);
-        }
-        .logs-buttons {
-            display: flex;
-            gap: 8px;
-        }
-        .copy-btn {
-            padding: 4px 12px;
-            font-size: 12px;
-            margin-top: -4px;
-        }
+{{.ThemeCSS}}
+{{.PageCSS}}
+{{.MarkCSS}}
     </style>
 </head>
 <body>
-    <div class="container" data-error="%s" data-app="%s" data-tld="%s">
-        <div class="logo"><a href="http://roost-dev.%s/" title="roost-dev dashboard">%s</a></div>
-        <h1>%s</h1>
-        <div class="status" id="status">%s...</div>
+    <div class="container" data-error="{{.ErrorMsg}}" data-app="{{.AppName}}" data-tld="{{.TLD}}" data-failed="{{.Failed}}">
+        <div class="logo"><a href="http://roost-dev.{{.TLD}}/" title="roost-dev dashboard">{{.Logo}}</a></div>
+        <h1>{{.AppName}}</h1>
+        <div class="status" id="status">{{.StatusText}}...</div>
         <div class="spinner" id="spinner"></div>
         <div class="logs" id="logs">
             <div class="logs-header">
@@ -405,268 +533,33 @@ func interstitialPage(appName, tld, theme string, failed bool, errorMsg string) 
         </div>
         <button class="btn btn-primary retry-btn" id="retry-btn" onclick="restartAndRetry()">Restart</button>
     </div>
-    <script>
-        const container = document.querySelector('.container');
-        const appName = container.dataset.app;
-        const tld = container.dataset.tld;
-        let failed = %t;
-        let lastLogCount = 0;
-        const startTime = Date.now();
-        const MIN_WAIT_MS = 500; // Brief wait before redirecting
-
-        // Convert ANSI escape codes to HTML spans (shared with dashboard)
-        function ansiToHtml(text) {
-            const colors = {
-                '30': '#000', '31': '#e74c3c', '32': '#2ecc71', '33': '#f1c40f',
-                '34': '#3498db', '35': '#9b59b6', '36': '#1abc9c', '37': '#ecf0f1',
-                '90': '#7f8c8d', '91': '#e74c3c', '92': '#2ecc71', '93': '#f1c40f',
-                '94': '#3498db', '95': '#9b59b6', '96': '#1abc9c', '97': '#fff'
-            };
-            let result = '';
-            let i = 0;
-            let openSpans = 0;
-            while (i < text.length) {
-                if (text[i] === '\x1b' && text[i+1] === '[') {
-                    let j = i + 2;
-                    while (j < text.length && text[j] !== 'm') j++;
-                    const codes = text.slice(i+2, j).split(';');
-                    i = j + 1;
-                    for (const code of codes) {
-                        if (code === '0' || code === '39' || code === '22' || code === '23') {
-                            if (openSpans > 0) { result += '</span>'; openSpans--; }
-                        } else if (colors[code]) {
-                            result += '<span style="color:' + colors[code] + '">';
-                            openSpans++;
-                        } else if (code === '1') {
-                            result += '<span style="font-weight:bold">';
-                            openSpans++;
-                        } else if (code === '3') {
-                            result += '<span style="font-style:italic">';
-                            openSpans++;
-                        }
-                    }
-                } else {
-                    // Escape HTML
-                    const c = text[i];
-                    if (c === '<') result += '&lt;';
-                    else if (c === '>') result += '&gt;';
-                    else if (c === '&') result += '&amp;';
-                    else result += c;
-                    i++;
-                }
-            }
-            while (openSpans-- > 0) result += '</span>';
-            return result;
-        }
-
-        // Strip ANSI escape codes for plain text display (status messages)
-        function stripAnsi(text) {
-            return text.replace(/\x1b\[[0-9;]*m/g, '').replace(/\[\?25[hl]/g, '');
-        }
-
-        // Analyze logs with Ollama to find error lines (async, updates UI when done)
-        async function analyzeLogsWithAI(lines) {
-            try {
-                const res = await fetch('http://roost-dev.' + tld + '/api/analyze-logs?name=' + encodeURIComponent(appName));
-                const data = await res.json();
-                if (!data.enabled || data.error || !data.errorLines || data.errorLines.length === 0) {
-                    return; // No highlighting needed
-                }
-
-                // Re-render logs with error lines highlighted
-                const errorSet = new Set(data.errorLines);
-                const content = document.getElementById('logs-content');
-                const highlighted = lines.map((line, idx) => {
-                    const html = ansiToHtml(line);
-                    return errorSet.has(idx) ? '<mark>' + html + '</mark>' : html;
-                }).join('\n');
-                content.innerHTML = highlighted;
-            } catch (e) {
-                console.log('AI analysis skipped:', e);
-            }
-        }
-
-        async function poll() {
-            console.log('poll() called');
-            try {
-                // Fetch status and logs in parallel
-                const [statusRes, logsRes] = await Promise.all([
-                    fetch('http://roost-dev.' + tld + '/api/app-status?name=' + encodeURIComponent(appName)),
-                    fetch('http://roost-dev.' + tld + '/api/logs?name=' + encodeURIComponent(appName))
-                ]);
-                const status = await statusRes.json();
-                const lines = await logsRes.json();
-                console.log('poll() got status:', status.status, 'logs:', lines?.length || 0);
-
-                // Update logs
-                if (lines && lines.length > 0) {
-                    const content = document.getElementById('logs-content');
-                    content.innerHTML = ansiToHtml(lines.join('\n'));
-                    // Auto-scroll if new lines
-                    if (lines.length > lastLogCount) {
-                        const logsDiv = document.getElementById('logs');
-                        logsDiv.scrollTop = logsDiv.scrollHeight;
-                        lastLogCount = lines.length;
-                    }
-                }
-
-                // Check status
-                if (status.status === 'running') {
-                    // Ensure minimum wait time has elapsed before redirecting
-                    // This gives services time to fully initialize even after port is ready
-                    const elapsed = Date.now() - startTime;
-                    if (elapsed < MIN_WAIT_MS) {
-                        document.getElementById('status').textContent = 'Almost ready...';
-                        setTimeout(poll, MIN_WAIT_MS - elapsed);
-                        return;
-                    }
-                    document.getElementById('status').textContent = 'Ready! Redirecting...';
-                    document.getElementById('spinner').style.borderTopColor = '#22c55e';
-                    setTimeout(() => location.reload(), 300);
-                    return;
-                } else if (status.status === 'failed') {
-                    console.log('poll() detected failed, calling showError');
-                    showError(status.error);
-                    return;
-                }
-
-                // Still starting, poll again (fast for responsive UI)
-                setTimeout(poll, 200);
-            } catch (e) {
-                console.error('Poll failed:', e);
-                setTimeout(poll, 1000);
-            }
-        }
-
-        function showError(msg) {
-            console.log('showError() called with:', msg);
-            document.getElementById('spinner').style.display = 'none';
-            const statusEl = document.getElementById('status');
-            statusEl.textContent = 'Failed to start' + (msg ? ': ' + stripAnsi(msg) : '');
-            statusEl.classList.add('error');
-            const btn = document.getElementById('retry-btn');
-            btn.style.display = 'inline-block';
-            btn.disabled = false;
-            btn.textContent = 'Restart';
-            console.log('showError() done, button should be visible and enabled');
-        }
-
-        function copyLogs() {
-            const content = document.getElementById('logs-content');
-            const btn = document.getElementById('copy-btn');
-            const text = content.textContent;
-
-            // We use execCommand('copy') instead of navigator.clipboard.writeText() because
-            // the Clipboard API requires a "secure context" (HTTPS or literal localhost).
-            // Even though *.test domains resolve to 127.0.0.1, browsers check the hostname,
-            // not the resolved IP - so app.test is considered insecure.
-            // execCommand('copy') is deprecated but works in non-secure contexts by copying
-            // selected text from a DOM element (hence the hidden textarea trick).
-            const textarea = document.createElement('textarea');
-            textarea.value = text;
-            textarea.style.position = 'fixed';
-            textarea.style.opacity = '0';
-            document.body.appendChild(textarea);
-            textarea.select();
-            document.execCommand('copy');
-            document.body.removeChild(textarea);
-
-            btn.textContent = 'Copied!';
-            setTimeout(() => btn.textContent = 'Copy', 500);
-        }
-
-        function copyForAgent() {
-            const content = document.getElementById('logs-content');
-            const btn = document.getElementById('copy-agent-btn');
-            const logs = content.textContent;
-
-            const bt = String.fromCharCode(96);
-            const context = 'I am using roost-dev, a local development server that manages apps via config files in ~/.config/roost-dev/.\n\n' +
-                'The app "' + appName + '" failed to start. The config file is at:\n' +
-                '~/.config/roost-dev/' + appName + '.yml\n\n' +
-                'Here are the startup logs:\n\n' +
-                bt+bt+bt + '\n' + logs + '\n' + bt+bt+bt + '\n\n' +
-                'Please help me understand and fix this error.';
-
-            const textarea = document.createElement('textarea');
-            textarea.value = context;
-            textarea.style.position = 'fixed';
-            textarea.style.opacity = '0';
-            document.body.appendChild(textarea);
-            textarea.select();
-            document.execCommand('copy');
-            document.body.removeChild(textarea);
-
-            btn.textContent = 'Copied!';
-            setTimeout(() => btn.textContent = 'Copy for agent', 500);
-        }
-
-        async function restartAndRetry() {
-            const btn = document.getElementById('retry-btn');
-            const statusEl = document.getElementById('status');
-            btn.textContent = 'Restarting...';
-            btn.disabled = true;
-            statusEl.textContent = 'Restarting...';
-            statusEl.classList.remove('error');
-            document.getElementById('spinner').style.display = 'block';
-            document.getElementById('logs-content').innerHTML = '<span class="logs-empty">Restarting...</span>';
-
-            try {
-                const url = 'http://roost-dev.' + tld + '/api/restart?name=' + encodeURIComponent(appName);
-                const res = await fetch(url);
-                if (!res.ok) {
-                    throw new Error('Restart API returned ' + res.status);
-                }
-                // Reset state for fresh polling (but keep logs visible until new ones arrive)
-                failed = false;
-                lastLogCount = 0;
-                statusEl.textContent = 'Starting...';
-                btn.style.display = 'none';
-                btn.textContent = 'Restart';
-                btn.disabled = false;
-                // Start polling immediately - restart API already waited 500ms internally
-                poll();
-            } catch (e) {
-                console.error('Restart failed:', e);
-                btn.textContent = 'Restart';
-                btn.disabled = false;
-                statusEl.textContent = 'Restart failed: ' + e.message;
-                statusEl.classList.add('error');
-                document.getElementById('spinner').style.display = 'none';
-            }
-        }
-
-        if (failed) {
-            // Get error from data attribute (safer than inline string)
-            const errorMsg = container.dataset.error || '';
-            showError(errorMsg);
-            // Still fetch logs once for failed state
-            fetch('http://roost-dev.' + tld + '/api/logs?name=' + encodeURIComponent(appName))
-                .then(r => r.json())
-                .then(lines => {
-                    if (lines && lines.length > 0) {
-                        document.getElementById('logs-content').innerHTML = ansiToHtml(lines.join('\n'));
-                        // Async: ask AI to highlight error lines
-                        analyzeLogsWithAI(lines);
-                    }
-                });
-        } else {
-            poll();
-        }
-    </script>
+    <script>{{.Script}}</script>
 </body>
-</html>`,
-		statusText,                  // title
-		html.EscapeString(appName),  // title
-		theme,                       // server-injected theme
-		html.EscapeString(errorMsg), // data-error attribute
-		html.EscapeString(appName),  // data-app attribute
-		html.EscapeString(tld),      // data-tld attribute
-		html.EscapeString(tld),      // logo link href
-		logo.Web(),                  // logo text
-		html.EscapeString(appName),  // h1
-		statusText,                  // status text
-		failed)                      // JS boolean
+</html>
+`))
+
+func interstitialPage(appName, tld, theme string, failed bool, errorMsg string) string {
+	statusText := "Starting"
+	if failed {
+		statusText = "Failed to start"
+	}
+
+	var b strings.Builder
+	data := interstitialData{
+		AppName:     appName,
+		TLD:         tld,
+		StatusText:  statusText,
+		Failed:      failed,
+		ErrorMsg:    errorMsg,
+		ThemeScript: template.HTML(styles.ThemeScript(theme)),
+		ThemeCSS:    template.CSS(styles.ThemeVars + styles.BaseStyles),
+		PageCSS:     template.CSS(interstitialCSS),
+		MarkCSS:     template.CSS(styles.MarkHighlight),
+		Logo:        template.HTML(logo.Web()),
+		Script:      template.JS(interstitialScript),
+	}
+	interstitialTmpl.Execute(&b, data)
+	return b.String()
 }
 
 // Server is the main roost-dev server
