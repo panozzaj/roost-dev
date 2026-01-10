@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -22,12 +24,20 @@ func slugify(name string) string {
 	return strings.ToLower(strings.ReplaceAll(name, " ", "-"))
 }
 
-func errorPage(title, message, hint, tld string) string {
+func errorPage(title, message, hint, tld, theme string) string {
 	return fmt.Sprintf(`<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
     <title>%s</title>
+    <script>
+        (function() {
+            var theme = '%s';
+            if (theme && theme !== 'system') {
+                document.documentElement.setAttribute('data-theme', theme);
+            }
+        })();
+    </script>
     <style>
         :root {
             --bg-primary: #1a1a2e;
@@ -37,13 +47,27 @@ func errorPage(title, message, hint, tld string) string {
             --border-color: #374151;
         }
         @media (prefers-color-scheme: light) {
-            :root {
+            :root:not([data-theme="dark"]) {
                 --bg-primary: #f5f5f5;
                 --text-primary: #1a1a1a;
                 --text-secondary: #4b5563;
                 --text-muted: #6b7280;
                 --border-color: #e5e7eb;
             }
+        }
+        [data-theme="light"] {
+            --bg-primary: #f5f5f5;
+            --text-primary: #1a1a1a;
+            --text-secondary: #4b5563;
+            --text-muted: #6b7280;
+            --border-color: #e5e7eb;
+        }
+        [data-theme="dark"] {
+            --bg-primary: #1a1a2e;
+            --text-primary: #eee;
+            --text-secondary: #9ca3af;
+            --text-muted: #6b7280;
+            --border-color: #374151;
         }
         * { box-sizing: border-box; }
         body {
@@ -118,6 +142,7 @@ func errorPage(title, message, hint, tld string) string {
 </body>
 </html>`,
 		html.EscapeString(title),
+		theme,
 		html.EscapeString(tld),
 		logo.Web(),
 		html.EscapeString(title),
@@ -125,7 +150,7 @@ func errorPage(title, message, hint, tld string) string {
 		hint)
 }
 
-func interstitialPage(appName, tld string, failed bool, errorMsg string) string {
+func interstitialPage(appName, tld, theme string, failed bool, errorMsg string) string {
 	statusText := "Starting"
 	if failed {
 		statusText = "Failed to start"
@@ -135,6 +160,14 @@ func interstitialPage(appName, tld string, failed bool, errorMsg string) string 
 <head>
     <meta charset="UTF-8">
     <title>%s %s</title>
+    <script>
+        (function() {
+            var theme = '%s'; // Server-injected theme
+            if (theme && theme !== 'system') {
+                document.documentElement.setAttribute('data-theme', theme);
+            }
+        })();
+    </script>
     <style>
         :root {
             --bg-primary: #1a1a2e;
@@ -148,7 +181,7 @@ func interstitialPage(appName, tld string, failed bool, errorMsg string) string 
             --logs-text: #d1d5db;
         }
         @media (prefers-color-scheme: light) {
-            :root {
+            :root:not([data-theme="dark"]) {
                 --bg-primary: #f5f5f5;
                 --bg-logs: #ffffff;
                 --text-primary: #1a1a1a;
@@ -159,6 +192,28 @@ func interstitialPage(appName, tld string, failed bool, errorMsg string) string 
                 --btn-hover: #d1d5db;
                 --logs-text: #374151;
             }
+        }
+        [data-theme="light"] {
+            --bg-primary: #f5f5f5;
+            --bg-logs: #ffffff;
+            --text-primary: #1a1a1a;
+            --text-secondary: #4b5563;
+            --text-muted: #6b7280;
+            --border-color: #e5e7eb;
+            --btn-bg: #e5e7eb;
+            --btn-hover: #d1d5db;
+            --logs-text: #374151;
+        }
+        [data-theme="dark"] {
+            --bg-primary: #1a1a2e;
+            --bg-logs: #0f172a;
+            --text-primary: #eee;
+            --text-secondary: #9ca3af;
+            --text-muted: #6b7280;
+            --border-color: #374151;
+            --btn-bg: #374151;
+            --btn-hover: #4b5563;
+            --logs-text: #d1d5db;
         }
         * { box-sizing: border-box; }
         body {
@@ -271,11 +326,16 @@ func interstitialPage(appName, tld string, failed bool, errorMsg string) string 
             to { background-position: 0%% 0; }
         }
         @media (prefers-color-scheme: dark) {
-            .logs-content mark {
+            :root:not([data-theme="light"]) .logs-content mark {
                 background: linear-gradient(90deg, #713f12 50%%, transparent 50%%);
                 background-size: 200%% 100%%;
                 background-position: 100%% 0;
             }
+        }
+        [data-theme="dark"] .logs-content mark {
+            background: linear-gradient(90deg, #713f12 50%%, transparent 50%%);
+            background-size: 200%% 100%%;
+            background-position: 100%% 0;
         }
         .btn {
             background: var(--btn-bg);
@@ -564,6 +624,7 @@ func interstitialPage(appName, tld string, failed bool, errorMsg string) string 
 </html>`,
 		statusText,                  // title
 		html.EscapeString(appName),  // title
+		theme,                       // server-injected theme
 		html.EscapeString(errorMsg), // data-error attribute
 		html.EscapeString(appName),  // data-app attribute
 		html.EscapeString(tld),      // data-tld attribute
@@ -584,6 +645,27 @@ type Server struct {
 	broadcaster   *Broadcaster       // SSE broadcaster for real-time updates
 	configWatcher *config.Watcher    // Watches config directory for changes
 	ollamaClient  *ollama.Client     // Optional LLM client for log analysis
+}
+
+// getTheme reads the theme from the theme file, defaults to "system"
+func (s *Server) getTheme() string {
+	data, err := os.ReadFile(filepath.Join(s.cfg.Dir, "theme"))
+	if err != nil {
+		return "system"
+	}
+	theme := strings.TrimSpace(string(data))
+	if theme == "light" || theme == "dark" || theme == "system" {
+		return theme
+	}
+	return "system"
+}
+
+// setTheme writes the theme to the theme file
+func (s *Server) setTheme(theme string) error {
+	if theme != "light" && theme != "dark" && theme != "system" {
+		return fmt.Errorf("invalid theme: %s", theme)
+	}
+	return os.WriteFile(filepath.Join(s.cfg.Dir, "theme"), []byte(theme), 0644)
 }
 
 // New creates a new server
@@ -702,7 +784,7 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 			"Service not found",
 			fmt.Sprintf("No service named '%s' in roost-dev-tests", subdomain),
 			`<p class="hint">Check available services at <a href="http://roost-dev.test">roost-dev.test</a></p>`,
-			s.cfg.TLD))
+			s.cfg.TLD, s.getTheme()))
 		return
 	}
 
@@ -714,7 +796,7 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 			"Invalid host",
 			fmt.Sprintf("Expected *.%s, got %s", s.cfg.TLD, host),
 			"",
-			s.cfg.TLD))
+			s.cfg.TLD, s.getTheme()))
 		return
 	}
 
@@ -751,7 +833,7 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 			"App not found",
 			fmt.Sprintf("No app configured for '%s'", name),
 			fmt.Sprintf(`<p class="hint">Create config at: %s/%s.yml</p>`, html.EscapeString(s.cfg.Dir), html.EscapeString(name)),
-			s.cfg.TLD))
+			s.cfg.TLD, s.getTheme()))
 		return
 	}
 
@@ -786,35 +868,35 @@ func (s *Server) handleApp(w http.ResponseWriter, r *http.Request, app *config.A
 	switch app.Type {
 	case config.AppTypePort:
 		// Simple proxy to fixed port
-		proxy.NewReverseProxy(app.Port).ServeHTTP(w, r)
+		proxy.NewReverseProxy(app.Port, s.getTheme()).ServeHTTP(w, r)
 
 	case config.AppTypeCommand:
 		// Check process status and serve appropriately
 		proc, found := s.procs.Get(app.Name)
 		if found && proc.IsRunning() {
 			// Already running - proxy directly
-			proxy.NewReverseProxy(proc.Port).ServeHTTP(w, r)
+			proxy.NewReverseProxy(proc.Port, s.getTheme()).ServeHTTP(w, r)
 			return
 		}
 		if found && proc.HasFailed() {
 			// Failed - show interstitial with error
 			w.Header().Set("Content-Type", "text/html")
 			w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
-			w.Write([]byte(interstitialPage(app.Name, s.cfg.TLD, true, proc.ExitError())))
+			w.Write([]byte(interstitialPage(app.Name, s.cfg.TLD, s.getTheme(), true, proc.ExitError())))
 			return
 		}
 		if found && proc.IsStarting() {
 			// Starting - show interstitial
 			w.Header().Set("Content-Type", "text/html")
 			w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
-			w.Write([]byte(interstitialPage(app.Name, s.cfg.TLD, false, "")))
+			w.Write([]byte(interstitialPage(app.Name, s.cfg.TLD, s.getTheme(), false, "")))
 			return
 		}
 		// Idle - start async and show interstitial
 		s.procs.StartAsync(app.Name, app.Command, app.Dir, app.Env)
 		w.Header().Set("Content-Type", "text/html")
 		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
-		w.Write([]byte(interstitialPage(app.Name, s.cfg.TLD, false, "")))
+		w.Write([]byte(interstitialPage(app.Name, s.cfg.TLD, s.getTheme(), false, "")))
 
 	case config.AppTypeStatic:
 		// Serve static files
@@ -891,7 +973,7 @@ func (s *Server) handleService(w http.ResponseWriter, r *http.Request, app *conf
 	if found && proc.IsRunning() {
 		// Already running - proxy directly
 		s.logRequest("  -> PROXY to port %d", proc.Port)
-		proxy.NewReverseProxy(proc.Port).ServeHTTP(w, r)
+		proxy.NewReverseProxy(proc.Port, s.getTheme()).ServeHTTP(w, r)
 		return
 	}
 	if found && proc.HasFailed() {
@@ -899,7 +981,7 @@ func (s *Server) handleService(w http.ResponseWriter, r *http.Request, app *conf
 		s.logRequest("  -> INTERSTITIAL (failed)")
 		w.Header().Set("Content-Type", "text/html")
 		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
-		w.Write([]byte(interstitialPage(procName, s.cfg.TLD, true, proc.ExitError())))
+		w.Write([]byte(interstitialPage(procName, s.cfg.TLD, s.getTheme(), true, proc.ExitError())))
 		return
 	}
 	if found && proc.IsStarting() {
@@ -907,7 +989,7 @@ func (s *Server) handleService(w http.ResponseWriter, r *http.Request, app *conf
 		s.logRequest("  -> INTERSTITIAL (starting)")
 		w.Header().Set("Content-Type", "text/html")
 		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
-		w.Write([]byte(interstitialPage(procName, s.cfg.TLD, false, "")))
+		w.Write([]byte(interstitialPage(procName, s.cfg.TLD, s.getTheme(), false, "")))
 		return
 	}
 	// Idle - start async and show interstitial
@@ -915,7 +997,7 @@ func (s *Server) handleService(w http.ResponseWriter, r *http.Request, app *conf
 	s.procs.StartAsync(procName, svc.Command, svc.Dir, svc.Env)
 	w.Header().Set("Content-Type", "text/html")
 	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
-	w.Write([]byte(interstitialPage(procName, s.cfg.TLD, false, "")))
+	w.Write([]byte(interstitialPage(procName, s.cfg.TLD, s.getTheme(), false, "")))
 }
 
 // ensureProcess ensures a process is running
@@ -984,7 +1066,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 	switch r.URL.Path {
 	case "/":
-		ui.ServeIndex(w, r, s.cfg.TLD, s.cfg.URLPort, s.getStatus())
+		ui.ServeIndex(w, r, s.cfg.TLD, s.cfg.URLPort, s.getStatus(), s.getTheme())
 
 	case "/api/status":
 		s.handleAPIStatus(w, r)
@@ -1187,6 +1269,26 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{"enabled": true, "errorLines": errorLines})
+
+	case "/api/theme":
+		if r.Method == "POST" {
+			var req struct {
+				Theme string `json:"theme"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, "invalid request", http.StatusBadRequest)
+				return
+			}
+			if err := s.setTheme(req.Theme); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"theme": req.Theme})
+		} else {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"theme": s.getTheme()})
+		}
 
 	default:
 		http.NotFound(w, r)

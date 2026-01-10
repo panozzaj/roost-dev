@@ -6,9 +6,9 @@ import (
 )
 
 // ServeIndex serves the main dashboard HTML with initial app data
-func ServeIndex(w http.ResponseWriter, r *http.Request, tld string, port int, initialData []byte) {
+func ServeIndex(w http.ResponseWriter, r *http.Request, tld string, port int, initialData []byte, theme string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, indexHTML, tld, port, string(initialData), tld)
+	fmt.Fprintf(w, indexHTML, theme, tld, port, string(initialData), tld)
 }
 
 const indexHTML = `<!DOCTYPE html>
@@ -17,6 +17,15 @@ const indexHTML = `<!DOCTYPE html>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>roost-dev</title>
+    <script>
+        // Set theme immediately to prevent flash of wrong theme
+        (function() {
+            var theme = '%s'; // Server-injected theme
+            if (theme && theme !== 'system') {
+                document.documentElement.setAttribute('data-theme', theme);
+            }
+        })();
+    </script>
     <style>
         :root {
             --bg-primary: #1a1a2e;
@@ -434,11 +443,16 @@ const indexHTML = `<!DOCTYPE html>
 
         // Theme management
         function getTheme() {
-            return localStorage.getItem('roost-theme') || 'system';
+            return document.documentElement.getAttribute('data-theme') || 'system';
         }
 
         function setTheme(theme) {
-            localStorage.setItem('roost-theme', theme);
+            // Save to server
+            fetch('/api/theme', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({theme: theme})
+            });
             if (theme === 'system') {
                 document.documentElement.removeAttribute('data-theme');
             } else {

@@ -23,7 +23,7 @@ type ReverseProxy struct {
 }
 
 // NewReverseProxy creates a new reverse proxy to the given port
-func NewReverseProxy(port int) *ReverseProxy {
+func NewReverseProxy(port int, theme string) *ReverseProxy {
 	target, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", port))
 
 	proxy := httputil.NewSingleHostReverseProxy(target)
@@ -48,16 +48,26 @@ func NewReverseProxy(port int) *ReverseProxy {
 <head>
     <meta charset="UTF-8">
     <title>Connection Error</title>
+    <script>
+        (function() {
+            var theme = '%s';
+            if (theme && theme !== 'system') {
+                document.documentElement.setAttribute('data-theme', theme);
+            }
+        })();
+    </script>
     <style>
         :root { --bg: #1a1a2e; --text: #eee; --muted: #9ca3af; --border: #374151; }
         @media (prefers-color-scheme: light) {
-            :root { --bg: #f5f5f5; --text: #1a1a1a; --muted: #6b7280; --border: #e5e7eb; }
+            :root:not([data-theme="dark"]) { --bg: #f5f5f5; --text: #1a1a1a; --muted: #6b7280; --border: #e5e7eb; }
         }
+        [data-theme="light"] { --bg: #f5f5f5; --text: #1a1a1a; --muted: #6b7280; --border: #e5e7eb; }
+        [data-theme="dark"] { --bg: #1a1a2e; --text: #eee; --muted: #9ca3af; --border: #374151; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 60px 40px; min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
         .container { text-align: center; max-width: 500px; }
         h1 { font-size: 24px; margin: 0 0 16px; }
         .message { color: var(--muted); margin-bottom: 24px; }
-        .spinner { width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: #f59e0b; border-radius: 50%%; animation: spin 1s linear infinite; margin: 0 auto; }
+        .spinner { width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: #f59e0b; border-radius: 50%%%%; animation: spin 1s linear infinite; margin: 0 auto; }
         @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
@@ -69,7 +79,7 @@ func NewReverseProxy(port int) *ReverseProxy {
     </div>
     <script>setTimeout(() => location.reload(), 1000);</script>
 </body>
-</html>`)
+</html>`, theme)
 	}
 
 	// Add cache-busting headers to prevent browser from caching proxied responses
