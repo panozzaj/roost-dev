@@ -44,6 +44,19 @@ func NewReverseProxy(port int) *ReverseProxy {
 		http.Error(w, fmt.Sprintf("%s\nProxy error: %v\n", asciiLogo, err), http.StatusBadGateway)
 	}
 
+	// Add cache-busting headers to prevent browser from caching proxied responses
+	// This ensures users see the interstitial when services restart
+	proxy.ModifyResponse = func(resp *http.Response) error {
+		// Only modify HTML responses (the main document)
+		contentType := resp.Header.Get("Content-Type")
+		if strings.HasPrefix(contentType, "text/html") {
+			resp.Header.Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+			resp.Header.Set("Pragma", "no-cache")
+			resp.Header.Set("Expires", "0")
+		}
+		return nil
+	}
+
 	return &ReverseProxy{
 		target: target,
 		proxy:  proxy,
