@@ -5,10 +5,10 @@ import (
 	"net/http"
 )
 
-// ServeIndex serves the main dashboard HTML
-func ServeIndex(w http.ResponseWriter, r *http.Request, tld string, port int) {
+// ServeIndex serves the main dashboard HTML with initial app data
+func ServeIndex(w http.ResponseWriter, r *http.Request, tld string, port int, initialData []byte) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, indexHTML, tld, port, tld)
+	fmt.Fprintf(w, indexHTML, tld, port, string(initialData), tld)
 }
 
 const indexHTML = `<!DOCTYPE html>
@@ -435,6 +435,7 @@ const indexHTML = `<!DOCTYPE html>
         const TLD = '%s';
         const PORT = %d;
         const portSuffix = PORT === 80 ? '' : ':' + PORT;
+        const INITIAL_DATA = %s;
         let currentApps = [];
         let expandedLogs = null;
         let eventSource = null;
@@ -546,16 +547,9 @@ echo "npm run dev" > ~/.config/roost-dev/myapp
             morphdom(container, wrapper, {
                 // Preserve scroll position and state
                 onBeforeElUpdated(fromEl, toEl) {
-                    // Preserve logs panel visibility
-                    if (fromEl.classList?.contains('logs-panel')) {
-                        if (fromEl.classList.contains('visible')) {
-                            toEl.classList.add('visible');
-                        }
-                    }
-                    // Preserve logs content scroll position and text
-                    if (fromEl.classList?.contains('logs-content')) {
-                        toEl.textContent = fromEl.textContent;
-                        toEl.scrollTop = fromEl.scrollTop;
+                    // Skip updating visible logs panels entirely (preserves button state, scroll, content)
+                    if (fromEl.classList?.contains('logs-panel') && fromEl.classList.contains('visible')) {
+                        return false;
                     }
                     // Preserve menu visibility
                     if (fromEl.classList?.contains('status-menu') && fromEl.classList.contains('visible')) {
@@ -706,15 +700,27 @@ echo "npm run dev" > ~/.config/roost-dev/myapp
             if (content) content.textContent = '';
         }
 
-        async function copyLogs(name, event) {
+        function copyLogs(name, event) {
             const content = document.getElementById('logs-content-' + name);
-            try {
-                await navigator.clipboard.writeText(content.textContent);
-                event.target.textContent = 'Copied!';
-                setTimeout(() => event.target.textContent = 'Copy', 1500);
-            } catch (err) {
-                console.error('Failed to copy:', err);
-            }
+            const text = content.textContent;
+
+            // We use execCommand('copy') instead of navigator.clipboard.writeText() because
+            // the Clipboard API requires a "secure context" (HTTPS or literal localhost).
+            // Even though *.test domains resolve to 127.0.0.1, browsers check the hostname,
+            // not the resolved IP - so roost-dev.test is considered insecure.
+            // execCommand('copy') is deprecated but works in non-secure contexts by copying
+            // selected text from a DOM element (hence the hidden textarea trick).
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+
+            event.target.textContent = 'Copied!';
+            setTimeout(() => event.target.textContent = 'Copy', 500);
         }
 
         async function stop(name) {
@@ -782,7 +788,8 @@ echo "npm run dev" > ~/.config/roost-dev/myapp
             }
         }, 2000);
 
-        // Start SSE connection
+        // Render initial data immediately, then connect SSE for updates
+        updateApps(INITIAL_DATA || []);
         connectSSE();
     </script>
 </body>

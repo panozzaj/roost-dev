@@ -267,16 +267,28 @@ func interstitialPage(appName, tld string, failed bool, errorMsg string) string 
             console.log('showError() done, button should be visible and enabled');
         }
 
-        async function copyLogs() {
+        function copyLogs() {
             const content = document.getElementById('logs-content');
             const btn = document.getElementById('copy-btn');
-            try {
-                await navigator.clipboard.writeText(content.textContent);
-                btn.textContent = 'Copied!';
-                setTimeout(() => btn.textContent = 'Copy', 1500);
-            } catch (err) {
-                console.error('Failed to copy:', err);
-            }
+            const text = content.textContent;
+
+            // We use execCommand('copy') instead of navigator.clipboard.writeText() because
+            // the Clipboard API requires a "secure context" (HTTPS or literal localhost).
+            // Even though *.test domains resolve to 127.0.0.1, browsers check the hostname,
+            // not the resolved IP - so app.test is considered insecure.
+            // execCommand('copy') is deprecated but works in non-secure contexts by copying
+            // selected text from a DOM element (hence the hidden textarea trick).
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+
+            btn.textContent = 'Copied!';
+            setTimeout(() => btn.textContent = 'Copy', 500);
         }
 
         async function restartAndRetry() {
@@ -718,7 +730,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 	switch r.URL.Path {
 	case "/":
-		ui.ServeIndex(w, r, s.cfg.TLD, s.cfg.URLPort)
+		ui.ServeIndex(w, r, s.cfg.TLD, s.cfg.URLPort, s.getStatus())
 
 	case "/api/status":
 		s.handleAPIStatus(w, r)
@@ -891,33 +903,33 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleAPIStatus returns status of all apps and processes
-func (s *Server) handleAPIStatus(w http.ResponseWriter, r *http.Request) {
-	type serviceStatus struct {
-		Name     string `json:"name"`
-		Running  bool   `json:"running"`
-		Starting bool   `json:"starting,omitempty"`
-		Failed   bool   `json:"failed,omitempty"`
-		Error    string `json:"error,omitempty"`
-		Port     int    `json:"port,omitempty"`
-		Uptime   string `json:"uptime,omitempty"`
-	}
+type serviceStatus struct {
+	Name     string `json:"name"`
+	Running  bool   `json:"running"`
+	Starting bool   `json:"starting,omitempty"`
+	Failed   bool   `json:"failed,omitempty"`
+	Error    string `json:"error,omitempty"`
+	Port     int    `json:"port,omitempty"`
+	Uptime   string `json:"uptime,omitempty"`
+}
 
-	type appStatus struct {
-		Name        string          `json:"name"`
-		Description string          `json:"description,omitempty"`
-		Aliases     []string        `json:"aliases,omitempty"`
-		Type        string          `json:"type"`
-		URL         string          `json:"url"`
-		Running     bool            `json:"running,omitempty"`
-		Starting    bool            `json:"starting,omitempty"`
-		Failed      bool            `json:"failed,omitempty"`
-		Error       string          `json:"error,omitempty"`
-		Port        int             `json:"port,omitempty"`
-		Uptime      string          `json:"uptime,omitempty"`
-		Services    []serviceStatus `json:"services,omitempty"`
-	}
+type appStatus struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	Aliases     []string        `json:"aliases,omitempty"`
+	Type        string          `json:"type"`
+	URL         string          `json:"url"`
+	Running     bool            `json:"running,omitempty"`
+	Starting    bool            `json:"starting,omitempty"`
+	Failed      bool            `json:"failed,omitempty"`
+	Error       string          `json:"error,omitempty"`
+	Port        int             `json:"port,omitempty"`
+	Uptime      string          `json:"uptime,omitempty"`
+	Services    []serviceStatus `json:"services,omitempty"`
+}
 
+// getStatus returns the current status of all apps as JSON
+func (s *Server) getStatus() []byte {
 	var status []appStatus
 
 	// Build base URL with port if not 80
@@ -988,8 +1000,14 @@ func (s *Server) handleAPIStatus(w http.ResponseWriter, r *http.Request) {
 		status = append(status, as)
 	}
 
+	data, _ := json.Marshal(status)
+	return data
+}
+
+// handleAPIStatus returns status of all apps and processes
+func (s *Server) handleAPIStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(status)
+	w.Write(s.getStatus())
 }
 
 // handleSSE handles Server-Sent Events connections for real-time updates
