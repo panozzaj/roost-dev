@@ -1,9 +1,37 @@
 # roost-dev
 
-After making changes that affect runtime behavior, rebuild and restart:
+## Managing roost-dev during development
+
+There are TWO versions of roost-dev:
+1. **Installed version**: `/Users/anthony/go/bin/roost-dev` (managed by launchd)
+2. **Local build**: `/Users/anthony/Documents/dev/roost-dev/roost-dev`
+
+### During development, use the local build:
 
 ```bash
-GOPATH=/Users/anthony/go go build -o ~/go/bin/roost-dev ./cmd/roost-dev && launchctl kickstart -k gui/$(id -u)/com.roost-dev
+# Stop the launchd-managed version and any running instances
+launchctl bootout gui/$(id -u)/com.roost-dev 2>/dev/null || true
+pkill -9 roost-dev 2>/dev/null || true
+
+# Build the local version
+unset GOPATH && go build -o /Users/anthony/Documents/dev/roost-dev/roost-dev ./cmd/roost-dev/
+
+# Start the local version
+/Users/anthony/Documents/dev/roost-dev/roost-dev &
+```
+
+### When done with development, restore launchd version:
+
+```bash
+pkill -9 roost-dev 2>/dev/null || true
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.roost-dev.plist
+```
+
+### Debug request handling:
+
+```bash
+# View server request logs
+curl -s "http://roost-dev.test/api/server-logs" | jq -r '.[]'
 ```
 
 ## Code patterns
