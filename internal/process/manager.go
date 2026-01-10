@@ -162,12 +162,13 @@ func (m *Manager) Start(name, command, dir string, env map[string]string) (*Proc
 	}
 
 	// Parse command (handle shell execution)
-	// Use interactive login shell to ensure user's environment (rvm, rbenv, nvm, etc.) is loaded
+	// Use login shell to ensure user's environment (rvm, rbenv, nvm, etc.) is loaded
+	// Note: -l (login) sources profiles; -i (interactive) causes zle errors in non-TTY contexts
 	shell := os.Getenv("SHELL")
 	if shell == "" {
 		shell = "/bin/bash"
 	}
-	cmd := exec.CommandContext(ctx, shell, "-i", "-l", "-c", command)
+	cmd := exec.CommandContext(ctx, shell, "-l", "-c", command)
 	cmd.Dir = dir
 	cmd.Env = procEnv
 	// Run in own process group so we can kill the entire tree
@@ -331,11 +332,12 @@ func (m *Manager) StartAsync(name, command, dir string, env map[string]string) (
 	}
 
 	// Parse command (handle shell execution)
+	// Note: -l (login) sources profiles; -i (interactive) causes zle errors in non-TTY contexts
 	shell := os.Getenv("SHELL")
 	if shell == "" {
 		shell = "/bin/bash"
 	}
-	cmd := exec.CommandContext(ctx, shell, "-i", "-l", "-c", command)
+	cmd := exec.CommandContext(ctx, shell, "-l", "-c", command)
 	cmd.Dir = dir
 	cmd.Env = procEnv
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
