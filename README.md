@@ -134,15 +134,7 @@ roost-dev install         Setup port forwarding (requires sudo)
 roost-dev uninstall       Remove port forwarding (requires sudo)
 ```
 
-## CLI Options
-
-```
---dir <path>          Config directory (default: ~/.config/roost-dev)
---http-port <n>       HTTP port (default: 9280)
---advertise-port <n>  Port for URLs (default: 80)
---dns-port <n>        DNS server port (default: 9053)
---tld <domain>        Top-level domain (default: localhost)
-```
+Run `roost-dev <command> --help` for command-specific options.
 
 ## Running as a Background Service (macOS)
 
