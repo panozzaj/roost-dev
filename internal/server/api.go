@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/panozzaj/roost-dev/internal/config"
+	"github.com/panozzaj/roost-dev/internal/server/pages"
 	"github.com/panozzaj/roost-dev/internal/ui"
 )
 
@@ -29,6 +30,10 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/":
 		ui.ServeIndex(w, r, s.cfg.TLD, s.cfg.URLPort, s.getStatus(), s.getTheme())
+
+	case "/icons":
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write([]byte(pages.IconsTestPage(s.getTheme())))
 
 	case "/api/status":
 		s.handleAPIStatus(w, r)
@@ -245,6 +250,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
+			s.broadcastTheme(req.Theme)
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]string{"theme": req.Theme})
 		} else {
@@ -346,17 +352,17 @@ func (s *Server) handleOpenTerminal(w http.ResponseWriter, r *http.Request) {
 ## About roost-dev
 roost-dev is a local development server that manages apps via config files in ~/.config/roost-dev/.
 - Config file for this app: ~/.config/roost-dev/%s.yml
-- To restart the app after fixing: curl -X POST "http://roost-dev.%s/api/restart?name=%s"
-- To check app status: curl "http://roost-dev.%s/api/app-status?name=%s"
-- To view logs: curl "http://roost-dev.%s/api/logs?name=%s" | jq
+- Run "roost-dev --help" to learn about available CLI commands
+- To restart the app: roost-dev restart %s
+- To stop the app: roost-dev stop %s
 
 ## Logs
 `+"```"+`
 %s
 `+"```"+`
 
-Please help me fix this error. After fixing, restart the app using the curl command above and verify it starts successfully.`,
-		name, name, s.cfg.TLD, name, s.cfg.TLD, name, s.cfg.TLD, name, logsText)
+Please help me fix this error. After fixing, restart the app using "roost-dev restart %s" and verify it starts successfully.`,
+		name, name, name, name, logsText, name)
 
 	// Write prompt to a temp file to avoid shell escaping issues
 	tmpFile, err := os.CreateTemp("", "roost-dev-prompt-*.txt")

@@ -180,6 +180,12 @@ func (s *Server) broadcastStatus() {
 	s.broadcaster.Broadcast(status)
 }
 
+// broadcastTheme sends a theme change to all connected SSE clients
+func (s *Server) broadcastTheme(theme string) {
+	data, _ := json.Marshal(map[string]string{"type": "theme", "theme": theme})
+	s.broadcaster.Broadcast(data)
+}
+
 // getStatusJSON returns the current status as JSON bytes
 func (s *Server) getStatusJSON() []byte {
 	// Reuse getStatus since it already does what we need
