@@ -54,8 +54,13 @@ func main() {
 
 	// Handle global flags before command
 	if os.Args[1] == "-h" || os.Args[1] == "--help" || os.Args[1] == "help" {
-		printMainUsage()
-		os.Exit(0)
+		// Check if asking for help on a specific command: roost-dev help serve
+		if len(os.Args) >= 3 {
+			os.Args = []string{os.Args[0], os.Args[2], "--help"}
+		} else {
+			printMainUsage()
+			os.Exit(0)
+		}
 	}
 	if os.Args[1] == "-v" || os.Args[1] == "--version" || os.Args[1] == "version" {
 		fmt.Printf("roost-dev %s\n", version)
