@@ -44,8 +44,10 @@ func printLogo() {
 }
 
 func main() {
-	// Track if we should start the server
+	// Track what action to take
 	runServer := false
+	doInstall := false
+	doUninstall := false
 
 	// Check for subcommands first (anything that doesn't start with -)
 	if len(os.Args) >= 2 && !strings.HasPrefix(os.Args[1], "-") {
@@ -70,6 +72,14 @@ func main() {
 				os.Exit(1)
 			}
 			os.Exit(0)
+		case "install":
+			// Remove "install" from args so flag parsing works for --tld
+			os.Args = append(os.Args[:1], os.Args[2:]...)
+			doInstall = true
+		case "uninstall":
+			// Remove "uninstall" from args so flag parsing works for --tld
+			os.Args = append(os.Args[:1], os.Args[2:]...)
+			doUninstall = true
 		case "help":
 			printUsage()
 			os.Exit(0)
@@ -134,16 +144,16 @@ func main() {
 		os.Exit(0)
 	}
 
-	if doSetup {
+	if doSetup || doInstall {
 		if err := runSetup(configDir, httpPort, dnsPort, tld); err != nil {
-			log.Fatalf("Setup failed: %v", err)
+			log.Fatalf("Install failed: %v", err)
 		}
 		os.Exit(0)
 	}
 
-	if doCleanup {
+	if doCleanup || doUninstall {
 		if err := runCleanup(tld); err != nil {
-			log.Fatalf("Cleanup failed: %v", err)
+			log.Fatalf("Uninstall failed: %v", err)
 		}
 		os.Exit(0)
 	}
@@ -264,6 +274,8 @@ COMMANDS:
     start <app>     Start an app
     stop <app>      Stop an app
     restart <app>   Restart an app
+    install         Setup pf rules and DNS for port forwarding (requires sudo)
+    uninstall       Remove pf rules and DNS configuration (requires sudo)
 
 OPTIONS:
     --dir <path>          Configuration directory (default: ~/.config/roost-dev)
@@ -309,25 +321,25 @@ CONFIGURATION:
         # Access at http://backend-myproject.localhost
 
 SETUP (recommended):
-    # One-time setup for .localhost (pf rules only)
-    sudo roost-dev --setup
+    # One-time install for .localhost (pf rules only)
+    sudo roost-dev install
 
-    # Or setup for .test TLD (pf rules + DNS resolver)
-    sudo roost-dev --setup --tld test
+    # Or install for .test TLD (pf rules + DNS resolver)
+    sudo roost-dev install --tld test
 
     # Then start the server (no sudo needed)
     roost-dev serve              # for .localhost
     roost-dev serve --tld test   # for .test
 
     # Remove configuration
-    sudo roost-dev --cleanup
-    sudo roost-dev --cleanup --tld test
+    sudo roost-dev uninstall
+    sudo roost-dev uninstall --tld test
 
 EXAMPLES:
-    # After running --setup, start the server
+    # After running install, start the server
     roost-dev serve
 
-    # Use .test TLD (requires setup with --tld test first)
+    # Use .test TLD (requires install --tld test first)
     roost-dev serve --tld test
 
     # Or run with sudo on port 80 directly (no setup needed)
@@ -372,7 +384,7 @@ func saveGlobalConfig(configDir string, cfg *GlobalConfig) error {
 }
 
 func runSetup(configDir string, targetPort, dnsPort int, tld string) error {
-	fmt.Println("Setting up roost-dev...")
+	fmt.Println("Installing roost-dev...")
 
 	// Save TLD to config so we don't need --tld flag every time
 	if err := saveGlobalConfig(configDir, &GlobalConfig{TLD: tld}); err != nil {
@@ -381,7 +393,7 @@ func runSetup(configDir string, targetPort, dnsPort int, tld string) error {
 
 	// Check if running as root
 	if os.Geteuid() != 0 {
-		return fmt.Errorf("setup requires root privileges. Run with sudo")
+		return fmt.Errorf("install requires root privileges. Run with: sudo roost-dev install")
 	}
 
 	// Create the pf anchor file
@@ -702,11 +714,11 @@ func listConfigFiles(configDir, tld string) error {
 }
 
 func runCleanup(tld string) error {
-	fmt.Println("Removing roost-dev configuration...")
+	fmt.Println("Uninstalling roost-dev configuration...")
 
 	// Check if running as root
 	if os.Geteuid() != 0 {
-		return fmt.Errorf("cleanup requires root privileges. Run with sudo")
+		return fmt.Errorf("uninstall requires root privileges. Run with: sudo roost-dev uninstall")
 	}
 
 	// Flush our anchor

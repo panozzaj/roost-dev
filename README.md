@@ -15,11 +15,11 @@ A local development proxy for all your projects. Like [puma-dev](https://github.
 ## Quick Start
 
 ```bash
-# One-time setup (forwards port 80 to roost-dev)
-sudo ./roost-dev --setup
+# One-time install (forwards port 80 to roost-dev)
+sudo roost-dev install
 
-# Run without sudo
-./roost-dev
+# Start the server
+roost-dev serve
 
 # Create a config
 echo "npm run dev" > ~/.config/roost-dev/myapp
