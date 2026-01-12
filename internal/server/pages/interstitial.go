@@ -45,10 +45,30 @@ var interstitialTmpl = template.Must(template.New("interstitial").Parse(`<!DOCTY
             <div class="logs-header">
                 <div class="logs-title">Logs <span class="config-path" id="config-path"></span></div>
                 <div class="logs-buttons">
-                    <button class="btn copy-btn" id="copy-btn" onclick="copyLogs()">Copy</button>
-                    <button class="btn copy-btn" id="copy-agent-btn" onclick="copyForAgent()">Copy for agent</button>
-                    <button class="btn copy-btn" id="fix-btn" onclick="fixWithClaudeCode()" style="display: none;">Fix with Claude Code</button>
-                    <button class="btn copy-btn" id="config-btn" onclick="openConfig()">Open Config</button>
+                    <button class="btn icon-btn" id="copy-btn" onclick="copyLogs()" title="Copy logs">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+                            <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+                        </svg>
+                    </button>
+                    <button class="btn icon-btn" id="copy-agent-btn" onclick="copyForAgent()" title="Copy for agent">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+                            <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+                            <path d="M9 14h.01M15 14h.01M10 18c.5.3 1.2.5 2 .5s1.5-.2 2-.5"></path>
+                        </svg>
+                    </button>
+                    <button class="btn icon-btn claude-btn" id="fix-btn" onclick="fixWithClaudeCode()" style="display: none;" title="Fix with Claude Code">
+                        <svg viewBox="0 0 16 16" fill="currentColor">
+                            <path d="m3.127 10.604 3.135-1.76.053-.153-.053-.085H6.11l-.525-.032-1.791-.048-1.554-.065-1.505-.08-.38-.081L0 7.832l.036-.234.32-.214.455.04 1.009.069 1.513.105 1.097.064 1.626.17h.259l.036-.105-.089-.065-.068-.064-1.566-1.062-1.695-1.121-.887-.646-.48-.327-.243-.306-.104-.67.435-.48.585.04.15.04.593.456 1.267.981 1.654 1.218.242.202.097-.068.012-.049-.109-.181-.9-1.626-.96-1.655-.428-.686-.113-.411a2 2 0 0 1-.068-.484l.496-.674L4.446 0l.662.089.279.242.411.94.666 1.48 1.033 2.014.302.597.162.553.06.17h.105v-.097l.085-1.134.157-1.392.154-1.792.052-.504.25-.605.497-.327.387.186.319.456-.045.294-.19 1.23-.37 1.93-.243 1.29h.142l.161-.16.654-.868 1.097-1.372.484-.545.565-.601.363-.287h.686l.505.751-.226.775-.707.895-.585.759-.839 1.13-.524.904.048.072.125-.012 1.897-.403 1.024-.186 1.223-.21.553.258.06.263-.218.536-1.307.323-1.533.307-2.284.54-.028.02.032.04 1.029.098.44.024h1.077l2.005.15.525.346.315.424-.053.323-.807.411-3.631-.863-.872-.218h-.12v.073l.726.71 1.331 1.202 1.667 1.55.084.383-.214.302-.226-.032-1.464-1.101-.565-.497-1.28-1.077h-.084v.113l.295.432 1.557 2.34.08.718-.112.234-.404.141-.444-.08-.911-1.28-.94-1.44-.759-1.291-.093.053-.448 4.821-.21.246-.484.186-.403-.307-.214-.496.214-.98.258-1.28.21-1.016.19-1.263.112-.42-.008-.028-.092.012-.953 1.307-1.448 1.957-1.146 1.227-.274.109-.477-.247.045-.44.266-.39 1.586-2.018.956-1.25.617-.723-.004-.105h-.036l-4.212 2.736-.75.096-.324-.302.04-.496.154-.162 1.267-.871z"/>
+                        </svg>
+                    </button>
+                    <button class="btn icon-btn" id="config-btn" onclick="openConfig()" title="Open config file">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="3"></circle>
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                        </svg>
+                    </button>
                 </div>
             </div>
             <div class="logs-content" id="logs-content"><span class="logs-empty">Waiting for output...</span></div>
@@ -202,10 +222,21 @@ h1 {
     display: flex;
     gap: 8px;
 }
-.copy-btn {
-    padding: 4px 12px;
-    font-size: 12px;
+.icon-btn {
+    padding: 6px;
     margin-top: -4px;
+}
+.icon-btn svg {
+    width: 18px;
+    height: 18px;
+    display: block;
+}
+.claude-btn {
+    animation: claude-pulse 2.5s ease-in-out infinite;
+}
+@keyframes claude-pulse {
+    0%, 80%, 100% { color: #da7756; }
+    90% { color: #C15F3C; }
 }
 `
 
@@ -337,38 +368,48 @@ function showError(msg) {
 
 async function fixWithClaudeCode() {
     const btn = document.getElementById('fix-btn');
-    btn.textContent = 'Opening...';
+    const origHTML = btn.innerHTML;
     btn.disabled = true;
     try {
         const res = await fetch('http://roost-dev.' + tld + '/api/open-terminal?name=' + encodeURIComponent(appName));
         if (!res.ok) {
             console.error('Failed to open terminal');
-            btn.textContent = 'Error';
+            btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
             setTimeout(() => {
-                btn.textContent = 'Fix with Claude Code';
+                btn.innerHTML = origHTML;
                 btn.disabled = false;
             }, 2000);
             return;
         }
-        btn.textContent = 'Opened!';
+        btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>';
         setTimeout(() => {
-            btn.textContent = 'Fix with Claude Code';
+            btn.innerHTML = origHTML;
             btn.disabled = false;
         }, 1000);
     } catch (e) {
         console.error('Failed to open terminal:', e);
-        btn.textContent = 'Error';
+        btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
         setTimeout(() => {
-            btn.textContent = 'Fix with Claude Code';
+            btn.innerHTML = origHTML;
             btn.disabled = false;
         }, 2000);
     }
 }
 
+function getLogsText() {
+    // Use selection if user has selected text within logs, otherwise use all logs
+    const selection = window.getSelection();
+    const logsContent = document.getElementById('logs-content');
+    if (selection && selection.toString().trim() && logsContent.contains(selection.anchorNode)) {
+        return selection.toString();
+    }
+    return logsContent.textContent;
+}
+
 function copyLogs() {
-    const content = document.getElementById('logs-content');
     const btn = document.getElementById('copy-btn');
-    const text = content.textContent;
+    const origHTML = btn.innerHTML;
+    const text = getLogsText();
     const textarea = document.createElement('textarea');
     textarea.value = text;
     textarea.style.position = 'fixed';
@@ -377,21 +418,23 @@ function copyLogs() {
     textarea.select();
     document.execCommand('copy');
     document.body.removeChild(textarea);
-    btn.textContent = 'Copied!';
-    setTimeout(() => btn.textContent = 'Copy', 500);
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+    setTimeout(() => btn.innerHTML = origHTML, 500);
 }
 
 function copyForAgent() {
-    const content = document.getElementById('logs-content');
     const btn = document.getElementById('copy-agent-btn');
-    const logs = content.textContent;
+    const origHTML = btn.innerHTML;
+    const logs = getLogsText();
     const bt = String.fromCharCode(96);
-    const configPath = document.getElementById('config-path').textContent || '~/.config/roost-dev/' + appName + '.yml';
+    const configPath = window.configFullPath || '~/.config/roost-dev/' + appName + '.yml';
     const context = 'I am using roost-dev, a local development server that manages apps via config files in ~/.config/roost-dev/.\n\n' +
         'The app "' + appName + '" failed to start. The config file is at:\n' +
         configPath + '\n\n' +
         'Here are the startup logs:\n\n' +
         bt+bt+bt + '\n' + logs + '\n' + bt+bt+bt + '\n\n' +
+        'To restart the app: roost-dev restart ' + appName + '\n' +
+        'To learn more about roost-dev commands: roost-dev --help\n\n' +
         'Please help me understand and fix this error.';
     const textarea = document.createElement('textarea');
     textarea.value = context;
@@ -401,35 +444,35 @@ function copyForAgent() {
     textarea.select();
     document.execCommand('copy');
     document.body.removeChild(textarea);
-    btn.textContent = 'Copied!';
-    setTimeout(() => btn.textContent = 'Copy for agent', 500);
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+    setTimeout(() => btn.innerHTML = origHTML, 500);
 }
 
 async function openConfig() {
     const btn = document.getElementById('config-btn');
-    btn.textContent = 'Opening...';
+    const origHTML = btn.innerHTML;
     btn.disabled = true;
     try {
         const res = await fetch('http://roost-dev.' + tld + '/api/open-config?name=' + encodeURIComponent(appName));
         if (!res.ok) {
             console.error('Failed to open config');
-            btn.textContent = 'Error';
+            btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
             setTimeout(() => {
-                btn.textContent = 'Open Config';
+                btn.innerHTML = origHTML;
                 btn.disabled = false;
             }, 2000);
             return;
         }
-        btn.textContent = 'Opened!';
+        btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>';
         setTimeout(() => {
-            btn.textContent = 'Open Config';
+            btn.innerHTML = origHTML;
             btn.disabled = false;
         }, 1000);
     } catch (e) {
         console.error('Failed to open config:', e);
-        btn.textContent = 'Error';
+        btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
         setTimeout(() => {
-            btn.textContent = 'Open Config';
+            btn.innerHTML = origHTML;
             btn.disabled = false;
         }, 2000);
     }
@@ -440,7 +483,15 @@ async function fetchConfigPath() {
         const res = await fetch('http://roost-dev.' + tld + '/api/config-path?name=' + encodeURIComponent(appName));
         const data = await res.json();
         if (data.path) {
-            document.getElementById('config-path').textContent = data.path;
+            // Store full path for Copy for agent, show relative for display
+            window.configFullPath = data.path;
+            // Strip ~/.config/roost-dev/ prefix for display
+            let displayPath = data.path;
+            const homePrefix = data.path.match(/^\/Users\/[^/]+\/.config\/roost-dev\//);
+            if (homePrefix) {
+                displayPath = data.path.slice(homePrefix[0].length);
+            }
+            document.getElementById('config-path').textContent = displayPath;
         }
     } catch (e) {
         console.log('Failed to fetch config path:', e);
@@ -479,6 +530,21 @@ async function restartAndRetry() {
 
 // Fetch config path on load
 fetchConfigPath();
+
+// Listen for theme changes from dashboard via SSE
+const themeSource = new EventSource('http://roost-dev.' + tld + '/api/events');
+themeSource.onmessage = (event) => {
+    try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'theme') {
+            if (data.theme === 'system') {
+                document.documentElement.removeAttribute('data-theme');
+            } else {
+                document.documentElement.setAttribute('data-theme', data.theme);
+            }
+        }
+    } catch (e) {}
+};
 
 if (failed) {
     const errorMsg = container.dataset.error || '';
