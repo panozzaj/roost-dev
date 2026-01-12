@@ -2,6 +2,7 @@ package process
 
 import (
 	"testing"
+	"time"
 )
 
 func TestLogBuffer(t *testing.T) {
@@ -170,6 +171,32 @@ func TestProcessStates(t *testing.T) {
 		if proc1 != proc2 {
 			t.Error("expected same process instance to be returned for starting process")
 		}
+	})
+}
+
+func TestStartAsyncWithMissingDirectory(t *testing.T) {
+	t.Run("fails when directory does not exist", func(t *testing.T) {
+		m := NewManager()
+		nonExistentDir := "/tmp/roost-dev-test-nonexistent-dir-12345"
+
+		proc, err := m.StartAsync("test-missing-dir", "echo hello", nonExistentDir, nil)
+		if err != nil {
+			// Immediate error is acceptable
+			return
+		}
+		defer m.Stop("test-missing-dir")
+
+		// Wait a bit for the process to fail
+		for i := 0; i < 10; i++ {
+			if proc.HasFailed() {
+				// Success - process properly marked as failed
+				return
+			}
+			// Small sleep to let the process attempt to start
+			<-time.After(100 * time.Millisecond)
+		}
+
+		t.Error("expected process to fail when directory does not exist")
 	})
 }
 
