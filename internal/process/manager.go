@@ -8,13 +8,41 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
 )
+
+// getUserShell returns the current user's default shell.
+// On macOS, it uses dscl to query the DirectoryService.
+// Falls back to SHELL env var, then /bin/zsh on macOS or /bin/bash elsewhere.
+func getUserShell() string {
+	// Try SHELL env var first
+	if shell := os.Getenv("SHELL"); shell != "" {
+		return shell
+	}
+
+	// On macOS, query DirectoryService for the user's shell
+	if runtime.GOOS == "darwin" {
+		if u, err := user.Current(); err == nil {
+			out, err := exec.Command("dscl", ".", "-read", "/Users/"+u.Username, "UserShell").Output()
+			if err == nil {
+				// Output is "UserShell: /bin/zsh"
+				if parts := strings.SplitN(strings.TrimSpace(string(out)), ": ", 2); len(parts) == 2 {
+					return parts[1]
+				}
+			}
+		}
+		return "/bin/zsh" // macOS default
+	}
+
+	return "/bin/bash" // Linux/other default
+}
 
 // Process represents a running process
 type Process struct {
@@ -162,13 +190,10 @@ func (m *Manager) Start(name, command, dir string, env map[string]string) (*Proc
 	}
 
 	// Parse command (handle shell execution)
-	// Use login shell to ensure user's environment (rvm, rbenv, nvm, etc.) is loaded
-	// Note: -l (login) sources profiles; -i (interactive) causes zle errors in non-TTY contexts
-	shell := os.Getenv("SHELL")
-	if shell == "" {
-		shell = "/bin/bash"
-	}
-	cmd := exec.CommandContext(ctx, shell, "-l", "-c", command)
+	// Use interactive login shell to ensure user's environment (rvm, rbenv, nvm, etc.) is loaded
+	// -l (login) sources .zprofile; -i (interactive) sources .zshrc/.bashrc
+	shell := getUserShell()
+	cmd := exec.CommandContext(ctx, shell, "-i", "-l", "-c", command)
 	cmd.Dir = dir
 	cmd.Env = procEnv
 	// Run in own process group so we can kill the entire tree
@@ -308,12 +333,10 @@ func (m *Manager) StartAsync(name, command, dir string, env map[string]string) (
 	}
 
 	// Parse command (handle shell execution)
-	// Note: -l (login) sources profiles; -i (interactive) causes zle errors in non-TTY contexts
-	shell := os.Getenv("SHELL")
-	if shell == "" {
-		shell = "/bin/bash"
-	}
-	cmd := exec.CommandContext(ctx, shell, "-l", "-c", command)
+	// Use interactive login shell to ensure user's environment (rvm, rbenv, nvm, etc.) is loaded
+	// -l (login) sources .zprofile; -i (interactive) sources .zshrc/.bashrc
+	shell := getUserShell()
+	cmd := exec.CommandContext(ctx, shell, "-i", "-l", "-c", command)
 	cmd.Dir = dir
 	cmd.Env = procEnv
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
