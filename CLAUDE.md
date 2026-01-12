@@ -36,10 +36,16 @@ unset GOPATH && go build -o /Users/anthony/Documents/dev/roost-dev/roost-dev ./c
 /Users/anthony/Documents/dev/roost-dev/roost-dev &
 ```
 
-### When done with development, restore launchd version:
+### When done with development, rebuild and restart launchd version:
 
 ```bash
+./scripts/restart.sh
+```
+
+Or manually:
+```bash
 pkill -9 roost-dev 2>/dev/null || true
+go install ./cmd/roost-dev/
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.roost-dev.plist
 ```
 
