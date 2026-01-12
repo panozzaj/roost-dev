@@ -9,7 +9,8 @@ echo "Building roost-dev..."
 unset GOPATH
 go install ./cmd/roost-dev/
 
-echo "Restarting via launchctl..."
+echo "Stopping any running roost-dev..."
+pkill -9 roost-dev 2>/dev/null || true
 launchctl bootout gui/$(id -u)/com.roost-dev 2>/dev/null || true
 sleep 1
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.roost-dev.plist

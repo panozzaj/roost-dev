@@ -22,31 +22,11 @@ pkill -9 roost-dev 2>/dev/null || true
 air
 ```
 
-### Option 2: Manual build
+### Option 2: Use restart script
 
 ```bash
-# Stop the launchd-managed version and any running instances
-launchctl bootout gui/$(id -u)/com.roost-dev 2>/dev/null || true
-pkill -9 roost-dev 2>/dev/null || true
-
-# Build the local version
-unset GOPATH && go build -o /Users/anthony/Documents/dev/roost-dev/roost-dev ./cmd/roost-dev/
-
-# Start the local version
-/Users/anthony/Documents/dev/roost-dev/roost-dev &
-```
-
-### When done with development, rebuild and restart launchd version:
-
-```bash
+# Rebuild and restart (uses launchd)
 ./scripts/restart.sh
-```
-
-Or manually:
-```bash
-pkill -9 roost-dev 2>/dev/null || true
-go install ./cmd/roost-dev/
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.roost-dev.plist
 ```
 
 ### Debug request handling:
@@ -61,3 +41,7 @@ curl -s "http://roost-dev.test/api/server-logs" | jq -r '.[]'
 - **Use non-blocking operations in HTTP handlers.** For process management, prefer `StartAsync()` over `Start()` in API handlers so responses return immediately. The dashboard polls for status updates.
 - **Avoid holding mutexes while waiting.** Release locks before any operation that could block (network calls, waiting for ports, etc.).
 - **Always background server processes.** When starting roost-dev from bash, use `run_in_background: true` or append `&` to avoid blocking the conversation. Use `tee` to capture output: `/path/to/roost-dev 2>&1 | tee ./tmp/roost-dev.log &`
+
+## UI patterns
+
+- **Icon buttons must have hover tooltips.** Any button that uses an icon (instead of or in addition to text) must have a `title` attribute providing a descriptive tooltip explaining what the button does.
