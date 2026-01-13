@@ -1174,6 +1174,26 @@ func saveGlobalConfig(configDir string, cfg *GlobalConfig) error {
 	return os.WriteFile(path, data, 0644)
 }
 
+// getProcessOnPort returns the process name listening on a port, or empty string if unknown
+func getProcessOnPort(port int) string {
+	// Try lsof to find the process (works without sudo for processes we own)
+	cmd := exec.Command("lsof", "-i", fmt.Sprintf(":%d", port), "-sTCP:LISTEN", "-n", "-P")
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+
+	// Parse lsof output - format: COMMAND PID USER ...
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines[1:] { // Skip header
+		fields := strings.Fields(line)
+		if len(fields) >= 1 {
+			return fields[0] // Return command name
+		}
+	}
+	return ""
+}
+
 func checkInstallConflicts(tld string) error {
 	fmt.Println("Checking for conflicts...")
 	var warnings []string
@@ -1190,7 +1210,11 @@ func checkInstallConflicts(tld string) error {
 	conn, err := net.DialTimeout("tcp", "127.0.0.1:80", 500*time.Millisecond)
 	if err == nil {
 		conn.Close()
-		warnings = append(warnings, "something is already listening on port 80")
+		if proc := getProcessOnPort(80); proc != "" {
+			warnings = append(warnings, fmt.Sprintf("%s is listening on port 80", proc))
+		} else {
+			warnings = append(warnings, "something is listening on port 80")
+		}
 	}
 
 	// Check for existing resolver that might conflict
