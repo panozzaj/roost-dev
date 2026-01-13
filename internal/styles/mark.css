@@ -12,12 +12,16 @@
 }
 
 @keyframes highlightSweep {
-    from { background-position: 100% 0; }
-    to { background-position: 0% 0; }
+    from {
+        background-position: 100% 0;
+    }
+    to {
+        background-position: 0% 0;
+    }
 }
 
 /* Explicit dark mode */
-[data-theme="dark"] .logs-content mark {
+[data-theme='dark'] .logs-content mark {
     --mark-color: #92702a;
 }
 

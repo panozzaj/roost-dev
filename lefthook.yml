@@ -23,3 +23,15 @@ pre-commit:
       glob: "internal/**/*.js"
       exclude: "**/icons_test_page*"
       run: "! grep -n '<svg' {staged_files} || (echo 'Error: Use ICONS.* instead of inline SVGs' && exit 1)"
+
+    - name: eslint
+      glob: "internal/**/*.js"
+      run: npx eslint {staged_files}
+
+    - name: stylelint
+      glob: "internal/**/*.css"
+      run: npx stylelint {staged_files}
+
+    - name: prettier
+      glob: "internal/**/*.{js,css}"
+      run: npx prettier --check {staged_files}

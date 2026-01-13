@@ -12,3 +12,7 @@ tmp/
 # OS
 .DS_Store
 /bin/
+
+# Node.js
+node_modules/
+package-lock.json

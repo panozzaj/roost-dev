@@ -12,7 +12,7 @@ body {
     width: 100%;
 }
 .logo {
-    font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+    font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono', monospace;
     font-size: 12px;
     white-space: pre;
     margin-bottom: 40px;
@@ -34,12 +34,16 @@ body {
     animation: rainbow 2s linear infinite;
 }
 @keyframes rainbow {
-    0% { background-position: 0% center; }
-    100% { background-position: 200% center; }
+    0% {
+        background-position: 0% center;
+    }
+    100% {
+        background-position: 200% center;
+    }
 }
 h1 {
     font-size: 24px;
-    margin: 0 0 16px 0;
+    margin: 0 0 16px;
     color: var(--text-primary);
 }
 .status {
@@ -61,7 +65,9 @@ h1 {
     margin: 0 auto 24px;
 }
 @keyframes spin {
-    to { transform: rotate(360deg); }
+    to {
+        transform: rotate(360deg);
+    }
 }
 .logs {
     background: var(--bg-logs);
@@ -98,7 +104,9 @@ h1 {
     cursor: pointer;
     padding: 4px;
     border-radius: 4px;
-    transition: color 0.2s, background 0.2s;
+    transition:
+        color 0.2s,
+        background 0.2s;
 }
 .settings-btn:hover {
     color: var(--text-secondary);
@@ -126,7 +134,7 @@ h1 {
     padding: 8px 12px;
     white-space: nowrap;
     z-index: 100;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 .settings-menu.open {
     display: flex;
@@ -134,7 +142,7 @@ h1 {
     gap: 12px;
 }
 .settings-filename {
-    font-family: "SF Mono", Monaco, monospace;
+    font-family: 'SF Mono', Monaco, monospace;
     font-size: 13px;
     color: var(--text-secondary);
 }
@@ -146,7 +154,9 @@ h1 {
     cursor: pointer;
     padding: 4px;
     border-radius: 4px;
-    transition: color 0.2s, background 0.2s;
+    transition:
+        color 0.2s,
+        background 0.2s;
 }
 .settings-action:hover {
     color: var(--text-primary);
@@ -179,7 +189,7 @@ h1 {
     opacity: 1;
 }
 .logs-content {
-    font-family: "SF Mono", Monaco, monospace;
+    font-family: 'SF Mono', Monaco, monospace;
     font-size: 12px;
     line-height: 1.5;
     white-space: pre-wrap;
@@ -225,8 +235,8 @@ h1 {
     top: -16px;
     background: var(--bg-logs);
     z-index: 1;
-    margin: -16px -16px 8px -16px;
-    padding: 16px 16px 8px 16px;
+    margin: -16px -16px 8px;
+    padding: 16px 16px 8px;
     border-bottom: 1px solid var(--border-color);
 }
 .logs-buttons {
@@ -246,6 +256,13 @@ h1 {
     animation: claude-pulse 5s ease-in-out infinite;
 }
 @keyframes claude-pulse {
-    0%, 40%, 100% { color: #da7756; }
-    50%, 90% { color: #C15F3C; }
+    0%,
+    40%,
+    100% {
+        color: #da7756;
+    }
+    50%,
+    90% {
+        color: #c15f3c;
+    }
 }

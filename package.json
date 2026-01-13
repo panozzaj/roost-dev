@@ -1,0 +1,20 @@
+{
+  "name": "roost-dev",
+  "private": true,
+  "type": "module",
+  "description": "Development linting tools for roost-dev",
+  "scripts": {
+    "lint": "npm run lint:js && npm run lint:css",
+    "lint:js": "eslint 'internal/**/*.js'",
+    "lint:css": "stylelint 'internal/**/*.css'",
+    "format": "prettier --write 'internal/**/*.{js,css}'",
+    "format:check": "prettier --check 'internal/**/*.{js,css}'"
+  },
+  "devDependencies": {
+    "eslint": "^9.18.0",
+    "eslint-config-prettier": "^10.0.1",
+    "prettier": "^3.4.2",
+    "stylelint": "^16.12.0",
+    "stylelint-config-standard": "^37.0.0"
+  }
+}
