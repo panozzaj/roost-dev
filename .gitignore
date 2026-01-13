@@ -16,3 +16,6 @@ tmp/
 # Node.js
 node_modules/
 package-lock.json
+
+# Claude Code local settings (machine-specific paths)
+.claude/settings.local.json
