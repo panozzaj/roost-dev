@@ -143,14 +143,14 @@ func (s *Server) handleApp(w http.ResponseWriter, r *http.Request, app *config.A
 			// Failed - show interstitial with error
 			w.Header().Set("Content-Type", "text/html")
 			w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
-			w.Write([]byte(pages.Interstitial(app.Name, s.cfg.TLD, s.getTheme(), true, proc.ExitError())))
+			w.Write([]byte(pages.Interstitial(app.Name, app.Name, app.Name, s.cfg.TLD, s.getTheme(), true, proc.ExitError())))
 			return
 		}
 		if found && proc.IsStarting() {
 			// Starting - show interstitial
 			w.Header().Set("Content-Type", "text/html")
 			w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
-			w.Write([]byte(pages.Interstitial(app.Name, s.cfg.TLD, s.getTheme(), false, "")))
+			w.Write([]byte(pages.Interstitial(app.Name, app.Name, app.Name, s.cfg.TLD, s.getTheme(), false, "")))
 			return
 		}
 		// Idle - start async and show interstitial
@@ -159,12 +159,12 @@ func (s *Server) handleApp(w http.ResponseWriter, r *http.Request, app *config.A
 			// Immediate failure (e.g., directory doesn't exist)
 			w.Header().Set("Content-Type", "text/html")
 			w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
-			w.Write([]byte(pages.Interstitial(app.Name, s.cfg.TLD, s.getTheme(), true, err.Error())))
+			w.Write([]byte(pages.Interstitial(app.Name, app.Name, app.Name, s.cfg.TLD, s.getTheme(), true, err.Error())))
 			return
 		}
 		w.Header().Set("Content-Type", "text/html")
 		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
-		w.Write([]byte(pages.Interstitial(app.Name, s.cfg.TLD, s.getTheme(), false, "")))
+		w.Write([]byte(pages.Interstitial(app.Name, app.Name, app.Name, s.cfg.TLD, s.getTheme(), false, "")))
 
 	case config.AppTypeStatic:
 		// Serve static files
@@ -225,6 +225,13 @@ func (s *Server) ensureDependencies(app *config.App, svc *config.Service) {
 // handleService handles a request for a service within a multi-service app
 func (s *Server) handleService(w http.ResponseWriter, r *http.Request, app *config.App, svc *config.Service) {
 	procName := fmt.Sprintf("%s-%s", slugify(svc.Name), app.Name)
+	// Display name is the host without the TLD (e.g., "forever-start.roost-dev" from "forever-start.roost-dev.test")
+	host := r.Host
+	if idx := strings.LastIndex(host, ":"); idx != -1 {
+		host = host[:idx] // Remove port
+	}
+	displayName := strings.TrimSuffix(host, "."+s.cfg.TLD)
+	configName := app.Name // e.g., "roost-dev-tests"
 	s.logRequest("handleService: %s (path=%s)", procName, r.URL.Path)
 
 	// Start dependencies first
@@ -249,7 +256,7 @@ func (s *Server) handleService(w http.ResponseWriter, r *http.Request, app *conf
 		s.logRequest("  -> INTERSTITIAL (failed)")
 		w.Header().Set("Content-Type", "text/html")
 		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
-		w.Write([]byte(pages.Interstitial(procName, s.cfg.TLD, s.getTheme(), true, proc.ExitError())))
+		w.Write([]byte(pages.Interstitial(procName, displayName, configName, s.cfg.TLD, s.getTheme(), true, proc.ExitError())))
 		return
 	}
 	if found && proc.IsStarting() {
@@ -257,7 +264,7 @@ func (s *Server) handleService(w http.ResponseWriter, r *http.Request, app *conf
 		s.logRequest("  -> INTERSTITIAL (starting)")
 		w.Header().Set("Content-Type", "text/html")
 		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
-		w.Write([]byte(pages.Interstitial(procName, s.cfg.TLD, s.getTheme(), false, "")))
+		w.Write([]byte(pages.Interstitial(procName, displayName, configName, s.cfg.TLD, s.getTheme(), false, "")))
 		return
 	}
 	// Idle - start async and show interstitial
@@ -268,12 +275,12 @@ func (s *Server) handleService(w http.ResponseWriter, r *http.Request, app *conf
 		s.logRequest("  -> FAILED to start: %v", err)
 		w.Header().Set("Content-Type", "text/html")
 		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
-		w.Write([]byte(pages.Interstitial(procName, s.cfg.TLD, s.getTheme(), true, err.Error())))
+		w.Write([]byte(pages.Interstitial(procName, displayName, configName, s.cfg.TLD, s.getTheme(), true, err.Error())))
 		return
 	}
 	w.Header().Set("Content-Type", "text/html")
 	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
-	w.Write([]byte(pages.Interstitial(procName, s.cfg.TLD, s.getTheme(), false, "")))
+	w.Write([]byte(pages.Interstitial(procName, displayName, configName, s.cfg.TLD, s.getTheme(), false, "")))
 }
 
 // ensureProcess ensures a process is running

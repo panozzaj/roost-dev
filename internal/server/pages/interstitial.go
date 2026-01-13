@@ -10,7 +10,9 @@ import (
 
 // interstitialData holds data for the interstitial page template
 type interstitialData struct {
-	AppName     string
+	AppName     string // Process name used for API calls (e.g., "forever-start-roost-dev-tests")
+	DisplayName string // Display name with dots (e.g., "forever-start.roost-dev-tests")
+	ConfigName  string // Config file name (e.g., "roost-dev-tests")
 	TLD         string
 	StatusText  string
 	Failed      bool
@@ -36,15 +38,41 @@ var interstitialTmpl = template.Must(template.New("interstitial").Parse(`<!DOCTY
     </style>
 </head>
 <body>
-    <div class="container" data-error="{{.ErrorMsg}}" data-app="{{.AppName}}" data-tld="{{.TLD}}" data-failed="{{.Failed}}">
+    <div class="container" data-error="{{.ErrorMsg}}" data-app="{{.AppName}}" data-display="{{.DisplayName}}" data-config="{{.ConfigName}}" data-tld="{{.TLD}}" data-failed="{{.Failed}}">
         <div class="logo"><a href="//roost-dev.{{.TLD}}/" title="roost-dev dashboard">{{.Logo}}</a></div>
-        <h1>{{.AppName}}</h1>
+        <div class="title-row">
+            <h1>{{.DisplayName}}</h1>
+            <div class="settings-dropdown">
+                <button class="settings-btn" onclick="toggleSettings()" aria-label="Settings">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                    </svg>
+                </button>
+                <div class="settings-menu" id="settings-menu">
+                    <span class="settings-filename" id="settings-filename">{{.ConfigName}}.yml</span>
+                    <button class="settings-action" id="copy-path-btn" onclick="copyConfigPath(event)" data-tooltip="Copy absolute path">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                    </button>
+                    <button class="settings-action" id="open-editor-btn" onclick="openConfig(event)" data-tooltip="Open in editor">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                            <polyline points="15 3 21 3 21 9"></polyline>
+                            <line x1="10" y1="14" x2="21" y2="3"></line>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
         <div class="status" id="status">{{.StatusText}}...</div>
         <div class="spinner" id="spinner"></div>
         <div class="logs" id="logs">
             <div class="logs-header">
-                <div class="logs-title">Logs <span class="config-path" id="config-path"></span></div>
-                <div class="logs-buttons">
+                <div class="logs-title">Logs</div>
+                <div class="logs-buttons" id="logs-buttons" style="display: none;">
                     <button class="btn icon-btn" id="copy-btn" onclick="copyLogs()" title="Copy logs">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
@@ -61,12 +89,6 @@ var interstitialTmpl = template.Must(template.New("interstitial").Parse(`<!DOCTY
                     <button class="btn icon-btn claude-btn" id="fix-btn" onclick="fixWithClaudeCode()" style="display: none;" title="Fix with Claude Code">
                         <svg viewBox="0 0 16 16" fill="currentColor">
                             <path d="m3.127 10.604 3.135-1.76.053-.153-.053-.085H6.11l-.525-.032-1.791-.048-1.554-.065-1.505-.08-.38-.081L0 7.832l.036-.234.32-.214.455.04 1.009.069 1.513.105 1.097.064 1.626.17h.259l.036-.105-.089-.065-.068-.064-1.566-1.062-1.695-1.121-.887-.646-.48-.327-.243-.306-.104-.67.435-.48.585.04.15.04.593.456 1.267.981 1.654 1.218.242.202.097-.068.012-.049-.109-.181-.9-1.626-.96-1.655-.428-.686-.113-.411a2 2 0 0 1-.068-.484l.496-.674L4.446 0l.662.089.279.242.411.94.666 1.48 1.033 2.014.302.597.162.553.06.17h.105v-.097l.085-1.134.157-1.392.154-1.792.052-.504.25-.605.497-.327.387.186.319.456-.045.294-.19 1.23-.37 1.93-.243 1.29h.142l.161-.16.654-.868 1.097-1.372.484-.545.565-.601.363-.287h.686l.505.751-.226.775-.707.895-.585.759-.839 1.13-.524.904.048.072.125-.012 1.897-.403 1.024-.186 1.223-.21.553.258.06.263-.218.536-1.307.323-1.533.307-2.284.54-.028.02.032.04 1.029.098.44.024h1.077l2.005.15.525.346.315.424-.053.323-.807.411-3.631-.863-.872-.218h-.12v.073l.726.71 1.331 1.202 1.667 1.55.084.383-.214.302-.226-.032-1.464-1.101-.565-.497-1.28-1.077h-.084v.113l.295.432 1.557 2.34.08.718-.112.234-.404.141-.444-.08-.911-1.28-.94-1.44-.759-1.291-.093.053-.448 4.821-.21.246-.484.186-.403-.307-.214-.496.214-.98.258-1.28.21-1.016.19-1.263.112-.42-.008-.028-.092.012-.953 1.307-1.448 1.957-1.146 1.227-.274.109-.477-.247.045-.44.266-.39 1.586-2.018.956-1.25.617-.723-.004-.105h-.036l-4.212 2.736-.75.096-.324-.302.04-.496.154-.162 1.267-.871z"/>
-                        </svg>
-                    </button>
-                    <button class="btn icon-btn" id="config-btn" onclick="openConfig()" title="Open config file">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="12" cy="12" r="3"></circle>
-                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
                         </svg>
                     </button>
                 </div>
@@ -161,11 +183,105 @@ h1 {
     font-size: 12px;
     margin-bottom: 8px;
 }
-.config-path {
+.title-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+.title-row h1 {
+    margin: 0;
+}
+.settings-dropdown {
+    position: relative;
+}
+.settings-btn {
+    background: transparent;
+    border: none;
     color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: color 0.2s, background 0.2s;
+}
+.settings-btn:hover {
+    color: var(--text-secondary);
+    background: var(--btn-bg);
+}
+.settings-btn svg {
+    width: 18px;
+    height: 18px;
+    display: block;
+    transition: transform 0.6s ease;
+}
+.settings-btn.open svg {
+    transform: rotate(150deg);
+}
+.settings-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-top: 8px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 8px 12px;
+    white-space: nowrap;
+    z-index: 100;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+.settings-menu.open {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.settings-filename {
     font-family: "SF Mono", Monaco, monospace;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+.settings-action {
+    position: relative;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: color 0.2s, background 0.2s;
+}
+.settings-action:hover {
+    color: var(--text-primary);
+    background: var(--btn-bg);
+}
+.settings-action svg {
+    width: 16px;
+    height: 16px;
+    display: block;
+}
+/* CSS Tooltips */
+.settings-action::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: -28px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
     font-size: 11px;
-    margin-left: 8px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+    z-index: 101;
+}
+.settings-action:hover::after {
+    opacity: 1;
 }
 .logs-content {
     font-family: "SF Mono", Monaco, monospace;
@@ -244,12 +360,54 @@ h1 {
 const interstitialScript = `
 const container = document.querySelector('.container');
 const appName = container.dataset.app;
+const displayName = container.dataset.display;
+const configName = container.dataset.config;
 const tld = container.dataset.tld;
 const baseUrl = window.location.protocol + '//roost-dev.' + tld;
 let failed = container.dataset.failed === 'true';
 let lastLogCount = 0;
+let buttonsShown = false;
 const startTime = Date.now();
 const MIN_WAIT_MS = 500;
+
+function showButtons() {
+    if (!buttonsShown) {
+        document.getElementById('logs-buttons').style.display = 'flex';
+        buttonsShown = true;
+    }
+}
+
+function toggleSettings() {
+    const menu = document.getElementById('settings-menu');
+    const btn = document.querySelector('.settings-btn');
+    menu.classList.toggle('open');
+    btn.classList.toggle('open');
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', function(e) {
+    const dropdown = document.querySelector('.settings-dropdown');
+    const btn = document.querySelector('.settings-btn');
+    if (!dropdown.contains(e.target)) {
+        document.getElementById('settings-menu').classList.remove('open');
+        btn.classList.remove('open');
+    }
+});
+
+function copyConfigPath(e) {
+    e.stopPropagation();
+    const path = window.configFullPath || '~/.config/roost-dev/' + configName + '.yml';
+    const btn = document.getElementById('copy-path-btn');
+    const origHTML = btn.innerHTML;
+    navigator.clipboard.writeText(path).then(() => {
+        btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+        setTimeout(() => {
+            btn.innerHTML = origHTML;
+            document.getElementById('settings-menu').classList.remove('open');
+            document.querySelector('.settings-btn').classList.remove('open');
+        }, 500);
+    });
+}
 
 function ansiToHtml(text) {
     const colors = {
@@ -326,6 +484,7 @@ async function poll() {
         if (lines && lines.length > 0) {
             const content = document.getElementById('logs-content');
             content.innerHTML = ansiToHtml(lines.join('\n'));
+            showButtons();
             if (lines.length > lastLogCount) {
                 const logsDiv = document.getElementById('logs');
                 logsDiv.scrollTop = logsDiv.scrollHeight;
@@ -449,50 +608,36 @@ function copyForAgent() {
     setTimeout(() => btn.innerHTML = origHTML, 500);
 }
 
-async function openConfig() {
-    const btn = document.getElementById('config-btn');
-    const origHTML = btn.innerHTML;
-    btn.disabled = true;
+async function openConfig(e) {
+    if (e) e.stopPropagation();
+    const btn = document.getElementById('open-editor-btn');
     try {
-        const res = await fetch(baseUrl + '/api/open-config?name=' + encodeURIComponent(appName));
+        const res = await fetch(baseUrl + '/api/open-config?name=' + encodeURIComponent(configName));
         if (!res.ok) {
             console.error('Failed to open config');
-            btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
-            setTimeout(() => {
-                btn.innerHTML = origHTML;
-                btn.disabled = false;
-            }, 2000);
+            btn.style.color = '#e74c3c';
+            setTimeout(() => btn.style.color = '', 2000);
             return;
         }
-        btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>';
-        setTimeout(() => {
-            btn.innerHTML = origHTML;
-            btn.disabled = false;
-        }, 1000);
+        btn.style.color = '#22c55e';
+        document.getElementById('settings-menu').classList.remove('open');
+        document.querySelector('.settings-btn').classList.remove('open');
+        setTimeout(() => btn.style.color = '', 500);
     } catch (e) {
         console.error('Failed to open config:', e);
-        btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
-        setTimeout(() => {
-            btn.innerHTML = origHTML;
-            btn.disabled = false;
-        }, 2000);
+        btn.style.color = '#e74c3c';
+        setTimeout(() => btn.style.color = '', 2000);
     }
 }
 
 async function fetchConfigPath() {
     try {
-        const res = await fetch(baseUrl + '/api/config-path?name=' + encodeURIComponent(appName));
+        const res = await fetch(baseUrl + '/api/config-path?name=' + encodeURIComponent(configName));
         const data = await res.json();
         if (data.path) {
-            // Store full path for Copy for agent, show relative for display
+            // Store full path and update tooltip
             window.configFullPath = data.path;
-            // Strip ~/.config/roost-dev/ prefix for display
-            let displayPath = data.path;
-            const homePrefix = data.path.match(/^\/Users\/[^/]+\/.config\/roost-dev\//);
-            if (homePrefix) {
-                displayPath = data.path.slice(homePrefix[0].length);
-            }
-            document.getElementById('config-path').textContent = displayPath;
+            document.getElementById('copy-path-btn').setAttribute('data-tooltip', data.path);
         }
     } catch (e) {
         console.log('Failed to fetch config path:', e);
@@ -555,6 +700,7 @@ if (failed) {
         .then(lines => {
             if (lines && lines.length > 0) {
                 document.getElementById('logs-content').innerHTML = ansiToHtml(lines.join('\n'));
+                showButtons();
                 analyzeLogsWithAI(lines);
             }
         });
@@ -564,7 +710,10 @@ if (failed) {
 `
 
 // Interstitial renders the interstitial page
-func Interstitial(appName, tld, theme string, failed bool, errorMsg string) string {
+// appName: process name for API calls (e.g., "forever-start-roost-dev-tests")
+// displayName: display name with dots (e.g., "forever-start.roost-dev-tests")
+// configName: config file name (e.g., "roost-dev-tests")
+func Interstitial(appName, displayName, configName, tld, theme string, failed bool, errorMsg string) string {
 	statusText := "Starting"
 	if failed {
 		statusText = "Failed to start"
@@ -573,6 +722,8 @@ func Interstitial(appName, tld, theme string, failed bool, errorMsg string) stri
 	var b strings.Builder
 	data := interstitialData{
 		AppName:     appName,
+		DisplayName: displayName,
+		ConfigName:  configName,
 		TLD:         tld,
 		StatusText:  statusText,
 		Failed:      failed,
