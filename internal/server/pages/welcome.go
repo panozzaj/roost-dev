@@ -4,6 +4,7 @@ import (
 	"html/template"
 	"strings"
 
+	"github.com/panozzaj/roost-dev/internal/icons"
 	"github.com/panozzaj/roost-dev/internal/styles"
 )
 
@@ -25,7 +26,7 @@ func Welcome(tld, configDir, theme string) string {
 		ThemeCSS:    template.CSS(styles.HeadCSS()),
 		TLD:         tld,
 		ConfigDir:   configDir,
-		IconCheck:   template.HTML(IconCheckCurrentColor),
+		IconCheck:   template.HTML(icons.Check),
 	}
 
 	var b strings.Builder

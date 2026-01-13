@@ -1,0 +1,326 @@
+/* Dashboard-specific styles */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+    padding: 20px;
+    transition: background 0.2s, color 0.2s;
+}
+.container {
+    max-width: 900px;
+    margin: 0 auto;
+}
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border-color);
+}
+h1 {
+    font-size: 24px;
+    font-weight: 600;
+}
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.theme-toggle {
+    background: var(--btn-bg);
+    color: var(--text-secondary);
+    border: none;
+    padding: 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+}
+.theme-toggle:hover {
+    background: var(--btn-hover);
+}
+.connection-status {
+    font-size: 12px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.connection-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--error);
+}
+.connection-dot.connected {
+    background: var(--success);
+}
+.app {
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    margin-bottom: 12px;
+    transition: background 0.2s;
+}
+.app.highlight {
+    animation: highlightPulse 1s ease-out;
+}
+@keyframes highlightPulse {
+    0% { box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.7); }
+    70% { box-shadow: 0 0 0 10px rgba(96, 165, 250, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(96, 165, 250, 0); }
+}
+.app-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    cursor: pointer;
+}
+.app-header:hover {
+    background: var(--bg-tertiary);
+}
+.app-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    cursor: pointer;
+    transition: transform 0.1s;
+}
+.status-dot:hover {
+    transform: scale(1.2);
+    box-shadow: 0 0 6px currentColor;
+}
+.status-dot-wrapper {
+    position: relative;
+    display: inline-block;
+    padding: 8px;
+    margin: -8px;
+}
+.status-menu {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 4px 0;
+    min-width: 80px;
+    z-index: 100;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    display: none;
+}
+.status-menu.visible {
+    display: block;
+}
+.status-menu button {
+    display: block;
+    width: 100%;
+    padding: 6px 12px;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+}
+.status-menu button:hover {
+    background: var(--btn-bg);
+    color: var(--text-primary);
+}
+.status-menu button.danger {
+    color: var(--error);
+}
+.status-menu button.danger:hover {
+    background: var(--error);
+    color: #fff;
+}
+.status-dot.running {
+    background: var(--success);
+}
+.status-dot.failed {
+    background: var(--error);
+}
+.status-dot.idle {
+    background: var(--text-muted);
+}
+.status-dot.starting {
+    background: var(--warning);
+    animation: pulse 1s ease-in-out infinite;
+}
+@keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(1.2); }
+}
+.status-placeholder {
+    width: 10px;
+    height: 10px;
+}
+.app-description {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-left: 4px;
+}
+.app-name {
+    font-weight: 600;
+    font-size: 16px;
+}
+.app-aliases {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-style: italic;
+}
+.app-url {
+    color: var(--accent-blue);
+    text-decoration: none;
+    font-size: 14px;
+}
+.app-url:hover {
+    text-decoration: underline;
+    color: var(--accent-blue-hover);
+}
+.app-meta {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+.app-port {
+    font-size: 14px;
+    color: var(--text-muted);
+}
+.app-uptime {
+    font-size: 13px;
+    color: var(--text-muted);
+    min-width: 40px;
+}
+.services {
+    padding: 0 8px 16px 42px;
+}
+.service {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    margin-top: 8px;
+}
+.service-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.service-name {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+.service-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.app-error {
+    font-size: 12px;
+    color: var(--error);
+    display: block;
+    margin-top: 4px;
+    padding: 4px 8px;
+    background: var(--error-bg);
+    border-radius: 4px;
+    max-width: 500px;
+}
+.logs-panel {
+    background: var(--bg-logs);
+    border-top: 1px solid var(--border-color);
+    padding: 16px 20px;
+    display: none;
+}
+.logs-panel.visible {
+    display: block;
+}
+.logs-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+.logs-title {
+    font-size: 14px;
+    color: var(--text-muted);
+}
+.logs-actions {
+    display: flex;
+    gap: 8px;
+}
+.logs-actions button {
+    background: var(--btn-bg);
+    color: var(--text-secondary);
+    border: none;
+    padding: 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s;
+    display: none;
+}
+.logs-actions button.visible {
+    display: inline-flex;
+}
+.logs-actions button:hover {
+    background: var(--btn-hover);
+    color: var(--text-primary);
+}
+.logs-actions button svg {
+    width: 16px;
+    height: 16px;
+}
+.logs-actions .claude-btn {
+    animation: claude-pulse 5s ease-in-out infinite;
+}
+@keyframes claude-pulse {
+    0%, 40%, 100% { color: #da7756; }
+    50%, 90% { color: #C15F3C; }
+}
+.logs-content {
+    font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    max-height: 300px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: var(--text-secondary);
+}
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-muted);
+}
+.empty-state h2 {
+    font-size: 18px;
+    margin-bottom: 12px;
+    color: var(--text-secondary);
+}
+.empty-state code {
+    display: block;
+    background: var(--bg-secondary);
+    padding: 16px;
+    border-radius: 6px;
+    margin-top: 16px;
+    font-family: "SF Mono", Monaco, monospace;
+    font-size: 13px;
+    color: #7c3aed;
+    text-align: left;
+}
