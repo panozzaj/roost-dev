@@ -130,14 +130,15 @@ APP MANAGEMENT:
     start <app>       Start an app
     stop <app>        Stop an app
     restart <app>     Restart an app
-    docs              Show documentation
 
 COMPONENT MANAGEMENT:
     ports             Manage port forwarding (install/uninstall)
     cert              Manage HTTPS certificates (install/uninstall)
     service           Manage background service (install/uninstall)
 
-Run 'roost-dev <command> --help' for command-specific options.
+HELP:
+    docs              Full documentation (config, troubleshooting)
+    <command> --help  Command-specific options
 
 QUICK START:
     roost-dev setup               # Interactive setup wizard

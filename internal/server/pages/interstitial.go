@@ -594,7 +594,7 @@ function copyForAgent() {
         'Here are the startup logs:\n\n' +
         bt+bt+bt + '\n' + logs + '\n' + bt+bt+bt + '\n\n' +
         'To restart the app: roost-dev restart ' + appName + '\n' +
-        'To learn more about roost-dev commands: roost-dev --help\n\n' +
+        'For full documentation: roost-dev docs\n\n' +
         'Please help me understand and fix this error.';
     const textarea = document.createElement('textarea');
     textarea.value = context;
