@@ -186,6 +186,7 @@ func (s *AppStore) loadYAMLApp(name, path string) (*App, error) {
 		Aliases     []string          `yaml:"aliases"`
 		Alias       string            `yaml:"alias"` // Single alias shorthand
 		Root        string            `yaml:"root"`
+		Static      bool              `yaml:"static"` // Serve static files from root
 		Command     string            `yaml:"cmd"`    // For single-service shorthand
 		Env         map[string]string `yaml:"env"`    // For single-service shorthand
 		Hidden      bool              `yaml:"hidden"` // Hide from dashboard
@@ -219,6 +220,29 @@ func (s *AppStore) loadYAMLApp(name, path string) (*App, error) {
 	aliases := yamlCfg.Aliases
 	if yamlCfg.Alias != "" {
 		aliases = append(aliases, yamlCfg.Alias)
+	}
+
+	// Static file serving: static: true
+	if yamlCfg.Static {
+		if root == "" {
+			return nil, fmt.Errorf("static: true requires root to be set")
+		}
+		// Verify root exists and has index.html
+		if _, err := os.Stat(root); err != nil {
+			return nil, fmt.Errorf("static root not found: %s", root)
+		}
+		indexPath := filepath.Join(root, "index.html")
+		if _, err := os.Stat(indexPath); err != nil {
+			return nil, fmt.Errorf("static root has no index.html: %s", root)
+		}
+		return &App{
+			Name:        appName,
+			Description: yamlCfg.Description,
+			Aliases:     aliases,
+			Type:        AppTypeStatic,
+			FilePath:    root,
+			Hidden:      yamlCfg.Hidden,
+		}, nil
 	}
 
 	// Single-service shorthand: cmd at top level
