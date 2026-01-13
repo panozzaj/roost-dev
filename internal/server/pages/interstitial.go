@@ -729,7 +729,7 @@ func Interstitial(appName, displayName, configName, tld, theme string, failed bo
 		Failed:      failed,
 		ErrorMsg:    errorMsg,
 		ThemeScript: template.HTML(styles.ThemeScript(theme)),
-		ThemeCSS:    template.CSS(styles.ThemeVars + styles.BaseStyles),
+		ThemeCSS:    template.CSS(styles.HeadCSS()),
 		PageCSS:     template.CSS(interstitialCSS),
 		MarkCSS:     template.CSS(styles.MarkHighlight),
 		Logo:        template.HTML(logo.Web()),

@@ -42,6 +42,12 @@ curl -s "http://roost-dev.test/api/server-logs" | jq -r '.[]'
 - **Avoid holding mutexes while waiting.** Release locks before any operation that could block (network calls, waiting for ports, etc.).
 - **Always background server processes.** When starting roost-dev from bash, use `run_in_background: true` or append `&` to avoid blocking the conversation. Use `tee` to capture output: `/path/to/roost-dev 2>&1 | tee ./tmp/roost-dev.log &`
 
+## Useful URLs
+
+- **Dashboard**: http://roost-dev.test
+- **Icon test page**: http://roost-dev.test/icons (for previewing icon options)
+
 ## UI patterns
 
-- **Icon buttons must have hover tooltips.** Any button that uses an icon (instead of or in addition to text) must have a `title` attribute providing a descriptive tooltip explaining what the button does.
+- **Use CSS tooltips, not title attributes.** For tooltips, use `data-tooltip="..."` instead of `title="..."`. CSS tooltips appear instantly on hover, while native title tooltips have a ~500ms delay. The CSS is already set up: any element with `data-tooltip` will show the tooltip on hover.
+- **Icon buttons must have hover tooltips.** Any button that uses an icon (instead of or in addition to text) must have a `data-tooltip` attribute providing a descriptive tooltip explaining what the button does.

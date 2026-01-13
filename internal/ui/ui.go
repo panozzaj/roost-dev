@@ -215,13 +215,9 @@ const dashboardHTML = `<!DOCTYPE html>
             0%, 100% { opacity: 1; transform: scale(1); }
             50% { opacity: 0.5; transform: scale(1.2); }
         }
-        .static-badge {
-            width: 14px;
-            height: 16px;
-        }
-        .static-badge svg {
-            width: 100%;
-            height: 100%;
+        .status-placeholder {
+            width: 10px;
+            height: 10px;
         }
         .app-description {
             font-size: 13px;
@@ -390,7 +386,7 @@ const dashboardHTML = `<!DOCTYPE html>
                     <span class="connection-dot" id="connection-dot"></span>
                     <span id="connection-text">Connecting...</span>
                 </span>
-                <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
+                <button class="theme-toggle" onclick="toggleTheme()" data-tooltip="Toggle theme">
                     <span id="theme-icon">&#9790;</span>
                 </button>
             </div>
@@ -425,6 +421,20 @@ const dashboardHTML = `<!DOCTYPE html>
         function fixProtocol(url) {
             if (!url) return url;
             return url.replace(/^https?:/, window.location.protocol);
+        }
+
+        // Tooltip helper - returns data-tooltip attribute string
+        function tt(text) {
+            return 'data-tooltip="' + text + '"';
+        }
+
+        // Icon button helper - generates button HTML with tooltip
+        function iconBtn(opts) {
+            const classes = [opts.className];
+            if (opts.visible === false) classes.push('hidden');
+            return '<button class="' + classes.join(' ') + '" ' +
+                   'onclick="' + opts.onclick + '" ' +
+                   tt(opts.tooltip) + '>' + opts.svg + '</button>';
         }
 
         // Theme management
@@ -582,13 +592,14 @@ echo "npm run dev" > ~/.config/roost-dev/myapp
                     <div class="services">
                         ${app.services.map(svc => {
                             const svcStatus = getServiceStatus(svc);
+                            const svcTooltip = {failed: 'Failed', running: 'Running', starting: 'Starting', idle: 'Idle'}[svcStatus] || '';
                             const svcSlug = slugify(svc.name);
                             const svcName = svcSlug + '-' + app.name;
                             return ` + "`" + `
                             <div class="service">
                                 <div class="service-info">
                                     <div class="status-dot-wrapper">
-                                        <div class="status-dot ${svcStatus}" onclick="event.stopPropagation(); handleDotClick('${svcName}', event)"></div>
+                                        <div class="status-dot ${svcStatus}" data-tooltip="${svcTooltip}" onclick="event.stopPropagation(); handleDotClick('${svcName}', event)"></div>
                                         <div class="status-menu" id="menu-${svcName}-active">
                                             <button onclick="event.stopPropagation(); doRestart('${svcName}', event)">Restart</button>
                                             <button class="danger" onclick="event.stopPropagation(); doStop('${svcName}')">Stop</button>
@@ -614,10 +625,12 @@ echo "npm run dev" > ~/.config/roost-dev/myapp
                 ` + "`" + `;
             }
 
+            const statusTooltip = {failed: 'Failed', running: 'Running', starting: 'Starting', idle: 'Idle'}[statusClass] || '';
+
             const statusIndicator = app.type === 'static'
-                ? ` + "`" + `<div class="static-badge" title="Static files"><svg viewBox="0 0 512 512"><path fill="#e44d26" d="M108.4 0h23v22.8h21.2V0h23v69h-23V46h-21.2v23h-23M206 23h-20.3V0h63.7v23H229v46h-23M259.5 0h24.1l14.8 24.3L313.2 0h24.1v69h-23V34.8l-16.1 24.8-16.1-24.8v34.2h-22.6M348.7 0h23v46.2h32.6v22.8h-55.6"/><path fill="#f06529" d="M107.6 471l-33-370.4h362.8l-33 370.2L256.2 512"/><path fill="#e44d26" d="M256 480.5V131h148.3L376 447"/><path fill="#ebebeb" d="M142 176.3h114v45.4h-64.2l4.2 46.5h60v45.3H154.4M156.4 336.3H202l3.2 36.3 50.8 13.6v47.4l-93.2-26"/><path fill="#fff" d="M369.6 176.3H256v45.4h109.6M361.3 268.2H256v45.4h56l-5.3 59-50.7 13.6v47.2l93-25.8"/></svg></div>` + "`" + `
+                ? '<div class="status-placeholder"></div>'
                 : ` + "`" + `<div class="status-dot-wrapper">
-                        <div class="status-dot ${statusClass}" onclick="event.stopPropagation(); handleDotClick('${app.name}', event)"></div>
+                        <div class="status-dot ${statusClass}" data-tooltip="${statusTooltip}" onclick="event.stopPropagation(); handleDotClick('${app.name}', event)"></div>
                         <div class="status-menu" id="menu-${app.name}-active">
                             <button onclick="event.stopPropagation(); doRestart('${app.name}', event)">Restart</button>
                             <button class="danger" onclick="event.stopPropagation(); doStop('${app.name}')">Stop</button>
@@ -649,16 +662,16 @@ echo "npm run dev" > ~/.config/roost-dev/myapp
                         <div class="logs-header">
                             <span class="logs-title">Logs</span>
                             <div class="logs-actions" id="logs-actions-${app.name}">
-                                <button class="copy-btn" onclick="event.stopPropagation(); copyLogs('${app.name}', event)" title="Copy logs">
+                                <button class="copy-btn" onclick="event.stopPropagation(); copyLogs('${app.name}', event)" data-tooltip="Copy logs">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>
                                 </button>
-                                ${hasFailed ? ` + "`" + `<button class="agent-btn" onclick="event.stopPropagation(); copyForAgent('${app.name}', event)" title="Copy for agent">
+                                ${hasFailed ? ` + "`" + `<button class="agent-btn" onclick="event.stopPropagation(); copyForAgent('${app.name}', event)" data-tooltip="Copy for agent">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect><path d="M9 14h.01M15 14h.01M10 18c.5.3 1.2.5 2 .5s1.5-.2 2-.5"></path></svg>
                                 </button>` + "`" + ` : ''}
-                                ${hasFailed && claudeEnabled ? ` + "`" + `<button class="claude-btn" onclick="event.stopPropagation(); fixWithClaudeCode('${app.name}', event)" title="Fix with Claude Code">
+                                ${hasFailed && claudeEnabled ? ` + "`" + `<button class="claude-btn" onclick="event.stopPropagation(); fixWithClaudeCode('${app.name}', event)" data-tooltip="Fix with Claude Code">
                                     <svg viewBox="0 0 16 16" fill="currentColor"><path d="m3.127 10.604 3.135-1.76.053-.153-.053-.085H6.11l-.525-.032-1.791-.048-1.554-.065-1.505-.08-.38-.081L0 7.832l.036-.234.32-.214.455.04 1.009.069 1.513.105 1.097.064 1.626.17h.259l.036-.105-.089-.065-.068-.064-1.566-1.062-1.695-1.121-.887-.646-.48-.327-.243-.306-.104-.67.435-.48.585.04.15.04.593.456 1.267.981 1.654 1.218.242.202.097-.068.012-.049-.109-.181-.9-1.626-.96-1.655-.428-.686-.113-.411a2 2 0 0 1-.068-.484l.496-.674L4.446 0l.662.089.279.242.411.94.666 1.48 1.033 2.014.302.597.162.553.06.17h.105v-.097l.085-1.134.157-1.392.154-1.792.052-.504.25-.605.497-.327.387.186.319.456-.045.294-.19 1.23-.37 1.93-.243 1.29h.142l.161-.16.654-.868 1.097-1.372.484-.545.565-.601.363-.287h.686l.505.751-.226.775-.707.895-.585.759-.839 1.13-.524.904.048.072.125-.012 1.897-.403 1.024-.186 1.223-.21.553.258.06.263-.218.536-1.307.323-1.533.307-2.284.54-.028.02.032.04 1.029.098.44.024h1.077l2.005.15.525.346.315.424-.053.323-.807.411-3.631-.863-.872-.218h-.12v.073l.726.71 1.331 1.202 1.667 1.55.084.383-.214.302-.226-.032-1.464-1.101-.565-.497-1.28-1.077h-.084v.113l.295.432 1.557 2.34.08.718-.112.234-.404.141-.444-.08-.911-1.28-.94-1.44-.759-1.291-.093.053-.448 4.821-.21.246-.484.186-.403-.307-.214-.496.214-.98.258-1.28.21-1.016.19-1.263.112-.42-.008-.028-.092.012-.953 1.307-1.448 1.957-1.146 1.227-.274.109-.477-.247.045-.44.266-.39 1.586-2.018.956-1.25.617-.723-.004-.105h-.036l-4.212 2.736-.75.096-.324-.302.04-.496.154-.162 1.267-.871z"/></svg>
                                 </button>` + "`" + ` : ''}
-                                <button class="clear-btn" onclick="event.stopPropagation(); clearLogs('${app.name}')" title="Clear logs">
+                                <button class="clear-btn" onclick="event.stopPropagation(); clearLogs('${app.name}')" data-tooltip="Clear logs">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                                 </button>
                             </div>

@@ -20,6 +20,11 @@ var BaseStyles string
 //go:embed mark.css
 var MarkHighlight string
 
+// TooltipCSS contains CSS for fast hover tooltips (use data-tooltip attr)
+//
+//go:embed tooltip.css
+var TooltipCSS string
+
 // ThemeScript generates inline JavaScript to set theme before CSS loads
 func ThemeScript(theme string) string {
 	return fmt.Sprintf(`<script>
@@ -32,9 +37,9 @@ func ThemeScript(theme string) string {
 </script>`, theme)
 }
 
-// HeadCSS generates the common CSS for the <head> section including theme vars and base styles
+// HeadCSS generates the common CSS for the <head> section including theme vars, base styles, and tooltips
 func HeadCSS() string {
-	return ThemeVars + "\n" + BaseStyles
+	return ThemeVars + "\n" + BaseStyles + "\n" + TooltipCSS
 }
 
 // LogsCSS generates CSS for logs display including mark highlighting

@@ -154,6 +154,98 @@ h3 { color: var(--text-secondary); margin-top: 24px; margin-bottom: 12px; font-s
         </div>
     </div>
 
+    <h2>Static Site Type Icons</h2>
+    <p class="notes">For static file apps on dashboard - replaces status dot. Should be ~10px to align with dots.</p>
+    <div class="icon-grid">
+        <div class="icon-card" id="static-1">
+            <div class="icon-preview">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#e44d26" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="16 18 22 12 16 6"></polyline>
+                    <polyline points="8 6 2 12 8 18"></polyline>
+                </svg>
+            </div>
+            <div class="icon-name">static-1: code brackets</div>
+            <div class="icon-source">Feather (orange)</div>
+        </div>
+        <div class="icon-card" id="static-2">
+            <div class="icon-preview">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#e44d26" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="2" y1="12" x2="22" y2="12"></line>
+                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                </svg>
+            </div>
+            <div class="icon-name">static-2: globe</div>
+            <div class="icon-source">Feather (orange)</div>
+        </div>
+        <div class="icon-card" id="static-3">
+            <div class="icon-preview">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#e44d26" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+                    <polyline points="13 2 13 9 20 9"></polyline>
+                </svg>
+            </div>
+            <div class="icon-name">static-3: file</div>
+            <div class="icon-source">Feather (orange)</div>
+        </div>
+        <div class="icon-card" id="static-4">
+            <div class="icon-preview">
+                <svg viewBox="0 0 24 24" fill="#e44d26">
+                    <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+                </svg>
+            </div>
+            <div class="icon-name">static-4: home filled</div>
+            <div class="icon-source">Material (orange)</div>
+        </div>
+        <div class="icon-card" id="static-5">
+            <div class="icon-preview">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#e44d26" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                </svg>
+            </div>
+            <div class="icon-name">static-5: folder</div>
+            <div class="icon-source">Feather (orange)</div>
+        </div>
+        <div class="icon-card" id="static-6">
+            <div class="icon-preview">
+                <svg viewBox="0 0 512 512">
+                    <path fill="#e44d26" d="M107.6 471l-33-370.4h362.8l-33 370.2L256.2 512"/>
+                    <path fill="#f06529" d="M256 480.5V131h148.3L376 447"/>
+                    <path fill="#ebebeb" d="M142 176.3h114v45.4h-64.2l4.2 46.5h60v45.3H154.4M156.4 336.3H202l3.2 36.3 50.8 13.6v47.4l-93.2-26"/>
+                    <path fill="#fff" d="M369.6 176.3H256v45.4h109.6M361.3 268.2H256v45.4h56l-5.3 59-50.7 13.6v47.2l93-25.8"/>
+                </svg>
+            </div>
+            <div class="icon-name">static-6: HTML5 shield</div>
+            <div class="icon-source">Official HTML5 logo</div>
+        </div>
+    </div>
+
+    <h3>Static Icon Size Test (at 10px - same as status dot)</h3>
+    <div style="display: flex; align-items: center; gap: 12px; padding: 16px; background: var(--bg-card); border-radius: 8px; margin-bottom: 24px;">
+        <div style="width: 10px; height: 10px; border-radius: 50%; background: #22c55e;"></div>
+        <span>Running app (green dot)</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 12px; padding: 16px; background: var(--bg-card); border-radius: 8px; margin-bottom: 24px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#e44d26" stroke-width="2.5" width="10" height="10"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+        <span>Static app (code brackets)</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 12px; padding: 16px; background: var(--bg-card); border-radius: 8px; margin-bottom: 24px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#e44d26" stroke-width="2.5" width="10" height="10"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+        <span>Static app (globe)</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 12px; padding: 16px; background: var(--bg-card); border-radius: 8px; margin-bottom: 24px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#e44d26" stroke-width="2.5" width="10" height="10"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>
+        <span>Static app (file)</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 12px; padding: 16px; background: var(--bg-card); border-radius: 8px; margin-bottom: 24px;">
+        <svg viewBox="0 0 24 24" fill="#e44d26" width="10" height="10"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+        <span>Static app (home)</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 12px; padding: 16px; background: var(--bg-card); border-radius: 8px; margin-bottom: 24px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#e44d26" stroke-width="2.5" width="10" height="10"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+        <span>Static app (folder)</span>
+    </div>
+
     <h2>Copy Icons</h2>
     <p class="notes">For "Copy logs" button - simple clipboard</p>
     <div class="icon-grid">
