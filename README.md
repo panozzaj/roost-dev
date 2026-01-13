@@ -10,6 +10,7 @@ A local development proxy for all your projects. Like [puma-dev](https://github.
 - Dynamic port allocation - no more port conflicts
 - On-demand startup - services start when you access them
 - Subdomain support - `admin.myapp.test` passes through to your app
+- HTTPS support with locally-trusted certificates (via mkcert)
 - Web dashboard at `roost-dev.test`
 
 ## Quick Start
@@ -129,65 +130,56 @@ roost-dev stop <app>      Stop an app
 roost-dev restart <app>   Restart an app
 roost-dev install         Setup port forwarding (requires sudo)
 roost-dev uninstall       Remove port forwarding (requires sudo)
+roost-dev service         Manage background service (install/uninstall/status)
+roost-dev cert            Manage HTTPS certificates (install/uninstall/status)
 ```
 
 Run `roost-dev <command> --help` for command-specific options.
+
+## HTTPS Support
+
+roost-dev supports HTTPS with automatic certificate generation for any domain.
+
+```bash
+# Generate CA and trust it (one-time, prompts for password)
+roost-dev cert install
+
+# Restart roost-dev to enable HTTPS
+roost-dev service uninstall && roost-dev service install
+
+# Restart your browser to pick up the new CA
+```
+
+Now you can access your apps via HTTPS:
+- **https://myapp.test** - Your app with HTTPS
+- **https://roost-dev.test** - Dashboard with HTTPS
+- **https://anyapp.test** - Any domain works automatically
+
+Certificates are generated on-demand for each domain. Both HTTP and HTTPS work simultaneously.
+
+To check certificate status:
+```bash
+roost-dev cert status
+```
 
 ## Running as a Background Service (macOS)
 
 To have roost-dev start automatically on login and stay running:
 
 ```bash
-# Build and install the binary
-go build -o ~/go/bin/roost-dev ./cmd/roost-dev
-
-# Create the LaunchAgent
-cat > ~/Library/LaunchAgents/com.roost-dev.plist << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.roost-dev</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/Users/YOUR_USERNAME/go/bin/roost-dev</string>
-        <string>serve</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>/Users/YOUR_USERNAME/Library/Logs/roost-dev/stdout.log</string>
-    <key>StandardErrorPath</key>
-    <string>/Users/YOUR_USERNAME/Library/Logs/roost-dev/stderr.log</string>
-</dict>
-</plist>
-EOF
-
-# Replace YOUR_USERNAME with your actual username
-sed -i '' "s/YOUR_USERNAME/$USER/g" ~/Library/LaunchAgents/com.roost-dev.plist
-
-# Create logs directory
-mkdir -p ~/Library/Logs/roost-dev
-
-# Load the agent
-launchctl load ~/Library/LaunchAgents/com.roost-dev.plist
+roost-dev service install
 ```
+
+This creates a LaunchAgent that runs `roost-dev serve` automatically. The service will restart if it crashes.
 
 To manage the service:
 
 ```bash
-# Stop
-launchctl unload ~/Library/LaunchAgents/com.roost-dev.plist
-
-# Start
-launchctl load ~/Library/LaunchAgents/com.roost-dev.plist
-
-# View logs
-tail -f ~/Library/Logs/roost-dev/stdout.log
+roost-dev service status      # Check if running
+roost-dev service uninstall   # Stop and remove
 ```
+
+Logs are written to `~/Library/Logs/roost-dev/`.
 
 ## License
 

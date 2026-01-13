@@ -44,7 +44,7 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, pages.Error(
 			"Service not found",
 			fmt.Sprintf("No service named '%s' in roost-dev-tests", subdomain),
-			`<p class="hint">Check available services at <a href="http://roost-dev.test">roost-dev.test</a></p>`,
+			fmt.Sprintf(`<p class="hint">Check available services at <a href="//roost-dev.%s">roost-dev.%s</a></p>`, s.cfg.TLD, s.cfg.TLD),
 			s.cfg.TLD, s.getTheme()))
 		return
 	}

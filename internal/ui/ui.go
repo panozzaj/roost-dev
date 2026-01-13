@@ -413,6 +413,12 @@ const dashboardHTML = `<!DOCTYPE html>
             return name.toLowerCase().replace(/ /g, '-');
         }
 
+        // Fix URL to use current protocol (http/https)
+        function fixProtocol(url) {
+            if (!url) return url;
+            return url.replace(/^https?:/, window.location.protocol);
+        }
+
         // Theme management
         function getTheme() {
             return document.documentElement.getAttribute('data-theme') || 'system';
@@ -590,7 +596,7 @@ echo "npm run dev" > ~/.config/roost-dev/myapp
                                 <div class="service-meta">
                                     <span class="app-port">${svc.port ? ':' + svc.port : ''}</span>
                                     <span class="app-uptime">${svc.uptime || ''}</span>
-                                    <a class="app-url" href="${svc.url}" target="_blank" rel="noopener">
+                                    <a class="app-url" href="${fixProtocol(svc.url)}" target="_blank" rel="noopener">
                                         ${svc.url.replace(/^https?:\/\//, '')}
                                     </a>
                                 </div>
@@ -621,7 +627,7 @@ echo "npm run dev" > ~/.config/roost-dev/myapp
                         <div class="app-meta">
                             <span class="app-port">${app.port ? ':' + app.port : ''}</span>
                             <span class="app-uptime">${app.uptime || ''}</span>
-                            ${(!(app.services && app.services.length) || (app.services && app.services.some(s => s.default))) ? ` + "`" + `<a class="app-url" href="${app.url}" target="_blank" rel="noopener" onclick="event.stopPropagation()">
+                            ${(!(app.services && app.services.length) || (app.services && app.services.some(s => s.default))) ? ` + "`" + `<a class="app-url" href="${fixProtocol(app.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">
                                 ${app.name}.` + "`" + ` + TLD + ` + "`" + `
                             </a>` + "`" + ` : ''}
                         </div>

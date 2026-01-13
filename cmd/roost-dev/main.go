@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/panozzaj/roost-dev/internal/certs"
 	"github.com/panozzaj/roost-dev/internal/config"
 	"github.com/panozzaj/roost-dev/internal/dns"
 	"github.com/panozzaj/roost-dev/internal/logo"
@@ -88,6 +89,8 @@ func main() {
 		cmdUninstall(args)
 	case "service":
 		cmdService(args)
+	case "cert":
+		cmdCert(args)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n\nRun 'roost-dev help' for usage.\n", cmd)
 		os.Exit(1)
@@ -111,6 +114,7 @@ COMMANDS:
     install           Setup port forwarding (requires sudo)
     uninstall         Remove port forwarding config (requires sudo)
     service           Manage roost-dev as a background service
+    cert              Manage HTTPS certificates (requires mkcert)
     help              Show this help
     version           Show version
 
@@ -374,9 +378,13 @@ OPTIONS:`)
 		fs.PrintDefaults()
 		fmt.Println(`
 DESCRIPTION:
-    Sets up macOS pf (packet filter) rules to forward port 80 to roost-dev,
+    Sets up macOS pf (packet filter) rules to forward ports to roost-dev,
     and creates a DNS resolver for the TLD. This allows accessing apps at
     http://myapp.test without specifying a port.
+
+    Port forwarding:
+      - Port 80  → 9280 (HTTP)
+      - Port 443 → 9443 (HTTPS)
 
 EXAMPLES:
     sudo roost-dev install              # Setup for .test (default)
@@ -692,6 +700,277 @@ func runServiceStatus() {
 	fmt.Printf("Logs: %s/\n", logsDir)
 }
 
+// cmdCert handles the 'cert' command for managing HTTPS certificates
+func cmdCert(args []string) {
+	if len(args) == 0 {
+		printCertUsage()
+		os.Exit(0)
+	}
+
+	subcmd := args[0]
+	subargs := args[1:]
+
+	switch subcmd {
+	case "install":
+		cmdCertInstall(subargs)
+	case "uninstall":
+		cmdCertUninstall(subargs)
+	case "status":
+		cmdCertStatus(subargs)
+	case "-h", "--help", "help":
+		printCertUsage()
+		os.Exit(0)
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown cert command: %s\n\n", subcmd)
+		printCertUsage()
+		os.Exit(1)
+	}
+}
+
+func printCertUsage() {
+	fmt.Println(`roost-dev cert - Manage HTTPS certificates
+
+USAGE:
+    roost-dev cert <command>
+
+COMMANDS:
+    install     Generate CA and trust it (requires sudo for trust)
+    uninstall   Remove CA and certificates
+    status      Show certificate status
+
+DESCRIPTION:
+    Generates a local Certificate Authority (CA) that roost-dev uses to
+    dynamically create certificates for any domain. After running 'cert install':
+
+    - https://myapp.test will work (any domain!)
+    - Certificates are generated on-demand
+    - No browser warnings
+
+EXAMPLES:
+    roost-dev cert install    # Generate CA and enable HTTPS
+    roost-dev cert status     # Check certificate status`)
+}
+
+func cmdCertInstall(args []string) {
+	fs := flag.NewFlagSet("cert install", flag.ExitOnError)
+
+	homeDir, _ := os.UserHomeDir()
+	defaultConfigDir := filepath.Join(homeDir, ".config", "roost-dev")
+
+	var tld string
+	var configDir string
+
+	fs.StringVar(&tld, "tld", "test", "TLD for certificate (e.g., test)")
+	fs.StringVar(&configDir, "dir", defaultConfigDir, "Configuration directory")
+
+	fs.Usage = func() {
+		fmt.Println(`roost-dev cert install - Generate and trust the roost-dev CA
+
+USAGE:
+    roost-dev cert install [options]
+
+OPTIONS:`)
+		fs.PrintDefaults()
+		fmt.Println(`
+DESCRIPTION:
+    Generates a local Certificate Authority (CA) and installs it into
+    your system trust store. roost-dev then uses this CA to dynamically
+    generate certificates for any domain on-the-fly.
+
+    After running this:
+    - https://myapp.test will work in browsers
+    - https://anyother.test will also work
+    - No certificate warnings
+    - No need to regenerate certs when adding new apps`)
+	}
+
+	for _, arg := range args {
+		if arg == "-h" || arg == "--help" || arg == "help" {
+			fs.Usage()
+			os.Exit(0)
+		}
+	}
+
+	fs.Parse(args)
+
+	// Load saved config for TLD
+	globalCfg, _ := loadGlobalConfig(configDir)
+	if globalCfg != nil && tld == "test" {
+		tld = globalCfg.TLD
+	}
+
+	if err := runCertInstall(configDir, tld); err != nil {
+		log.Fatalf("Certificate install failed: %v", err)
+	}
+}
+
+func cmdCertUninstall(args []string) {
+	for _, arg := range args {
+		if arg == "-h" || arg == "--help" || arg == "help" {
+			fmt.Println(`roost-dev cert uninstall - Remove HTTPS certificates
+
+USAGE:
+    roost-dev cert uninstall
+
+Removes the certificates from the roost-dev config directory.
+The mkcert root CA is not removed (use 'mkcert -uninstall' for that).`)
+			os.Exit(0)
+		}
+	}
+
+	if err := runCertUninstall(); err != nil {
+		log.Fatalf("Certificate uninstall failed: %v", err)
+	}
+}
+
+func cmdCertStatus(args []string) {
+	for _, arg := range args {
+		if arg == "-h" || arg == "--help" || arg == "help" {
+			fmt.Println(`roost-dev cert status - Show certificate status
+
+USAGE:
+    roost-dev cert status
+
+Shows whether certificates are installed and their details.`)
+			os.Exit(0)
+		}
+	}
+
+	runCertStatus()
+}
+
+func getCertsDir() string {
+	homeDir, _ := os.UserHomeDir()
+	return filepath.Join(homeDir, ".config", "roost-dev", "certs")
+}
+
+func runCertInstall(configDir, tld string) error {
+	certsDir := getCertsDir()
+
+	// Check if CA already exists
+	caPath := filepath.Join(certsDir, "ca.pem")
+	if _, err := os.Stat(caPath); err == nil {
+		fmt.Printf("CA already exists: %s\n", caPath)
+		fmt.Println("To regenerate, run 'roost-dev cert uninstall' first.")
+		return nil
+	}
+
+	// Generate CA
+	fmt.Println("Generating roost-dev CA...")
+	if err := certs.GenerateCA(certsDir); err != nil {
+		return fmt.Errorf("generating CA: %w", err)
+	}
+
+	fmt.Println()
+	fmt.Printf("CA certificate: %s\n", caPath)
+	fmt.Println()
+
+	// Install CA into system trust store (macOS)
+	fmt.Println("Installing CA into system trust store...")
+	fmt.Println("(You may be prompted for your password)")
+	fmt.Println()
+
+	cmd := exec.Command("sudo", "security", "add-trusted-cert", "-d", "-r", "trustRoot", "-k", "/Library/Keychains/System.keychain", caPath)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+
+	if err := cmd.Run(); err != nil {
+		fmt.Println()
+		fmt.Println("Failed to install CA automatically. You can install it manually:")
+		fmt.Printf("  sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain %s\n", caPath)
+		fmt.Println()
+		fmt.Println("Or double-click the CA file and trust it in Keychain Access.")
+		return nil
+	}
+
+	fmt.Println()
+	fmt.Println("CA installed successfully!")
+	fmt.Println()
+	fmt.Println("HTTPS is now enabled with dynamic certificate generation.")
+	fmt.Println("Any *.test domain will automatically get a valid certificate.")
+	fmt.Println()
+	fmt.Println("Next steps:")
+	fmt.Println("  1. Restart roost-dev:")
+	fmt.Println("     roost-dev service uninstall && roost-dev service install")
+	fmt.Println()
+	fmt.Println("  2. Restart your browser (quit fully and reopen)")
+	fmt.Println("     This is needed for browsers to trust the new CA.")
+	fmt.Println()
+	fmt.Printf("Then visit: https://roost-dev.%s\n", tld)
+
+	return nil
+}
+
+func runCertUninstall() error {
+	certsDir := getCertsDir()
+
+	if _, err := os.Stat(certsDir); os.IsNotExist(err) {
+		fmt.Println("No certificates installed.")
+		return nil
+	}
+
+	fmt.Printf("Removing certificates from %s...\n", certsDir)
+	if err := os.RemoveAll(certsDir); err != nil {
+		return fmt.Errorf("removing certs directory: %w", err)
+	}
+
+	fmt.Println("Certificates removed.")
+	fmt.Println()
+	fmt.Println("Note: The roost-dev CA is still trusted in your system keychain.")
+	fmt.Println("To remove it, open Keychain Access and delete 'roost-dev Local CA'")
+
+	return nil
+}
+
+func runCertStatus() {
+	certsDir := getCertsDir()
+	homeDir, _ := os.UserHomeDir()
+	configDir := filepath.Join(homeDir, ".config", "roost-dev")
+
+	// Load TLD from config
+	globalCfg, _ := loadGlobalConfig(configDir)
+	tld := "test"
+	if globalCfg != nil {
+		tld = globalCfg.TLD
+	}
+
+	caFile := filepath.Join(certsDir, "ca.pem")
+	keyFile := filepath.Join(certsDir, "ca-key.pem")
+
+	fmt.Printf("TLD: .%s\n", tld)
+	fmt.Printf("Certs directory: %s\n", certsDir)
+	fmt.Println()
+
+	caExists := false
+
+	if info, err := os.Stat(caFile); err == nil {
+		caExists = true
+		fmt.Printf("CA Certificate: %s\n", caFile)
+		fmt.Printf("  Modified: %s\n", info.ModTime().Format("2006-01-02 15:04:05"))
+	} else {
+		fmt.Println("CA Certificate: not found")
+	}
+
+	if _, err := os.Stat(keyFile); err == nil {
+		fmt.Printf("CA Key: %s\n", keyFile)
+	} else {
+		fmt.Println("CA Key: not found")
+	}
+
+	fmt.Println()
+	if caExists {
+		fmt.Println("Status: HTTPS enabled (dynamic certificate generation)")
+		fmt.Printf("  https://myapp.%s will work\n", tld)
+		fmt.Printf("  https://anyapp.%s will work\n", tld)
+		fmt.Println()
+		fmt.Println("Certificates are generated on-demand for each domain.")
+	} else {
+		fmt.Println("Status: HTTPS not configured")
+		fmt.Println("  Run 'roost-dev cert install' to enable HTTPS")
+	}
+}
+
 const (
 	pfAnchorPath     = "/etc/pf.anchors/roost-dev"
 	launchdPlistPath = "/Library/LaunchDaemons/dev.roost.pfctl.plist"
@@ -793,8 +1072,14 @@ func runSetup(configDir string, targetPort, dnsPort int, tld string) error {
 
 	// Create the pf anchor file
 	anchorContent := `# roost-dev port forwarding rules
-# Forward port 80 to 9280 for roost-dev
+# Forward port 80 to 9280 for roost-dev HTTP (IPv4)
 rdr pass on lo0 inet proto tcp from any to any port 80 -> 127.0.0.1 port 9280
+# Forward port 443 to 9443 for roost-dev HTTPS (IPv4)
+rdr pass on lo0 inet proto tcp from any to any port 443 -> 127.0.0.1 port 9443
+# Forward port 80 to 9280 for roost-dev HTTP (IPv6)
+rdr pass on lo0 inet6 proto tcp from any to any port 80 -> ::1 port 9280
+# Forward port 443 to 9443 for roost-dev HTTPS (IPv6)
+rdr pass on lo0 inet6 proto tcp from any to any port 443 -> ::1 port 9443
 `
 	fmt.Printf("Creating %s...\n", pfAnchorPath)
 	if err := os.WriteFile(pfAnchorPath, []byte(anchorContent), 0644); err != nil {
@@ -901,7 +1186,9 @@ rdr pass on lo0 inet proto tcp from any to any port 80 -> 127.0.0.1 port 9280
 	fmt.Println()
 	fmt.Println("Setup complete!")
 	fmt.Println()
-	fmt.Println("Port 80 is now forwarded to port 9280.")
+	fmt.Println("Port forwarding enabled:")
+	fmt.Println("  - Port 80  → 9280 (HTTP)")
+	fmt.Println("  - Port 443 → 9443 (HTTPS)")
 	fmt.Printf("TLD '%s' saved to config.\n", tld)
 	fmt.Println()
 	fmt.Println("You can now run roost-dev without sudo:")
@@ -909,6 +1196,8 @@ rdr pass on lo0 inet proto tcp from any to any port 80 -> 127.0.0.1 port 9280
 	fmt.Println("    roost-dev serve")
 	fmt.Println()
 	fmt.Printf("Then access your apps at http://appname.%s\n", tld)
+	fmt.Println()
+	fmt.Println("For HTTPS support, run: roost-dev cert install")
 	if needsUpdate {
 		fmt.Println()
 		fmt.Println("Note: /etc/pf.conf was modified. Backup saved to /etc/pf.conf.roost-dev-backup")

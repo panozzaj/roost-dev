@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/panozzaj/roost-dev/internal/certs"
 	"github.com/panozzaj/roost-dev/internal/config"
 	"github.com/panozzaj/roost-dev/internal/ollama"
 	"github.com/panozzaj/roost-dev/internal/process"
@@ -25,6 +26,7 @@ type Server struct {
 	apps          *config.AppStore
 	procs         *process.Manager
 	httpSrv       *http.Server
+	httpsSrv      *http.Server       // HTTPS server (optional, only if certs exist)
 	requestLog    *process.LogBuffer // Reuse LogBuffer for request logging
 	broadcaster   *Broadcaster       // SSE broadcaster for real-time updates
 	configWatcher *config.Watcher    // Watches config directory for changes
@@ -71,6 +73,11 @@ func New(cfg *config.Config) (*Server, error) {
 	return s, nil
 }
 
+// getCertsDir returns the path to the certs directory
+func (s *Server) getCertsDir() string {
+	return filepath.Join(s.cfg.Dir, "certs")
+}
+
 // Start starts the HTTP server
 func (s *Server) Start() error {
 	// Start config watcher
@@ -92,6 +99,21 @@ func (s *Server) Start() error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleRequest)
 
+	// Start HTTPS servers if CA exists (dynamic cert generation)
+	certsDir := s.getCertsDir()
+	if certs.CAExists(certsDir) {
+		certManager, err := certs.NewManager(certsDir, s.cfg.TLD)
+		if err != nil {
+			fmt.Printf("Warning: failed to load CA: %v\n", err)
+		} else {
+			go s.startHTTPS(mux, certManager, "127.0.0.1")
+			go s.startHTTPS(mux, certManager, "[::1]")
+		}
+	}
+
+	// Start HTTP on IPv6 as well
+	go s.startHTTPv6(mux)
+
 	addr := fmt.Sprintf("127.0.0.1:%d", s.cfg.HTTPPort)
 	s.httpSrv = &http.Server{
 		Addr:    addr,
@@ -99,6 +121,42 @@ func (s *Server) Start() error {
 	}
 
 	return s.httpSrv.ListenAndServe()
+}
+
+// startHTTPv6 starts an HTTP server on IPv6 localhost
+func (s *Server) startHTTPv6(handler http.Handler) {
+	addr := fmt.Sprintf("[::1]:%d", s.cfg.HTTPPort)
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: handler,
+	}
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		// IPv6 might not be available, that's OK
+	}
+}
+
+// startHTTPS starts the HTTPS server with dynamic certificate generation
+func (s *Server) startHTTPS(handler http.Handler, certManager *certs.Manager, host string) {
+	addr := fmt.Sprintf("%s:%d", host, s.cfg.HTTPSPort)
+
+	srv := &http.Server{
+		Addr:      addr,
+		Handler:   handler,
+		TLSConfig: certManager.TLSConfig(),
+	}
+
+	// Only store the IPv4 server for shutdown and logging
+	if host == "127.0.0.1" {
+		s.httpsSrv = srv
+		fmt.Printf("HTTPS listening on https://%s:%d (dynamic certs)\n", host, s.cfg.HTTPSPort)
+	}
+
+	if err := srv.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+		// IPv6 might not be available, that's OK
+		if host != "[::1]" {
+			fmt.Printf("HTTPS server error: %v\n", err)
+		}
+	}
 }
 
 // Shutdown gracefully shuts down the server
@@ -109,6 +167,9 @@ func (s *Server) Shutdown() {
 	s.procs.StopAll()
 	if s.httpSrv != nil {
 		s.httpSrv.Close()
+	}
+	if s.httpsSrv != nil {
+		s.httpsSrv.Close()
 	}
 }
 

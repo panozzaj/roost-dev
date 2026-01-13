@@ -175,8 +175,8 @@ const welcomeHTML = `<!DOCTYPE html>
         </div>
 
         <div class="links">
-            <a href="http://roost-dev.{{.TLD}}">Open Dashboard</a>
-            <a href="http://roost-dev.{{.TLD}}" onclick="event.preventDefault(); navigator.clipboard.writeText('roost-dev serve --help')">Copy help command</a>
+            <a href="//roost-dev.{{.TLD}}">Open Dashboard</a>
+            <a href="//roost-dev.{{.TLD}}" onclick="event.preventDefault(); navigator.clipboard.writeText('roost-dev serve --help')">Copy help command</a>
         </div>
     </div>
 </body>

@@ -37,7 +37,7 @@ var interstitialTmpl = template.Must(template.New("interstitial").Parse(`<!DOCTY
 </head>
 <body>
     <div class="container" data-error="{{.ErrorMsg}}" data-app="{{.AppName}}" data-tld="{{.TLD}}" data-failed="{{.Failed}}">
-        <div class="logo"><a href="http://roost-dev.{{.TLD}}/" title="roost-dev dashboard">{{.Logo}}</a></div>
+        <div class="logo"><a href="//roost-dev.{{.TLD}}/" title="roost-dev dashboard">{{.Logo}}</a></div>
         <h1>{{.AppName}}</h1>
         <div class="status" id="status">{{.StatusText}}...</div>
         <div class="spinner" id="spinner"></div>
@@ -245,6 +245,7 @@ const interstitialScript = `
 const container = document.querySelector('.container');
 const appName = container.dataset.app;
 const tld = container.dataset.tld;
+const baseUrl = window.location.protocol + '//roost-dev.' + tld;
 let failed = container.dataset.failed === 'true';
 let lastLogCount = 0;
 const startTime = Date.now();
@@ -299,7 +300,7 @@ function stripAnsi(text) {
 
 async function analyzeLogsWithAI(lines) {
     try {
-        const res = await fetch('http://roost-dev.' + tld + '/api/analyze-logs?name=' + encodeURIComponent(appName));
+        const res = await fetch(baseUrl + '/api/analyze-logs?name=' + encodeURIComponent(appName));
         const data = await res.json();
         if (!data.enabled || data.error || !data.errorLines || data.errorLines.length === 0) return;
         const errorSet = new Set(data.errorLines);
@@ -317,8 +318,8 @@ async function analyzeLogsWithAI(lines) {
 async function poll() {
     try {
         const [statusRes, logsRes] = await Promise.all([
-            fetch('http://roost-dev.' + tld + '/api/app-status?name=' + encodeURIComponent(appName)),
-            fetch('http://roost-dev.' + tld + '/api/logs?name=' + encodeURIComponent(appName))
+            fetch(baseUrl + '/api/app-status?name=' + encodeURIComponent(appName)),
+            fetch(baseUrl + '/api/logs?name=' + encodeURIComponent(appName))
         ]);
         const status = await statusRes.json();
         const lines = await logsRes.json();
@@ -371,7 +372,7 @@ async function fixWithClaudeCode() {
     const origHTML = btn.innerHTML;
     btn.disabled = true;
     try {
-        const res = await fetch('http://roost-dev.' + tld + '/api/open-terminal?name=' + encodeURIComponent(appName));
+        const res = await fetch(baseUrl + '/api/open-terminal?name=' + encodeURIComponent(appName));
         if (!res.ok) {
             console.error('Failed to open terminal');
             btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
@@ -453,7 +454,7 @@ async function openConfig() {
     const origHTML = btn.innerHTML;
     btn.disabled = true;
     try {
-        const res = await fetch('http://roost-dev.' + tld + '/api/open-config?name=' + encodeURIComponent(appName));
+        const res = await fetch(baseUrl + '/api/open-config?name=' + encodeURIComponent(appName));
         if (!res.ok) {
             console.error('Failed to open config');
             btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
@@ -480,7 +481,7 @@ async function openConfig() {
 
 async function fetchConfigPath() {
     try {
-        const res = await fetch('http://roost-dev.' + tld + '/api/config-path?name=' + encodeURIComponent(appName));
+        const res = await fetch(baseUrl + '/api/config-path?name=' + encodeURIComponent(appName));
         const data = await res.json();
         if (data.path) {
             // Store full path for Copy for agent, show relative for display
@@ -508,7 +509,7 @@ async function restartAndRetry() {
     document.getElementById('spinner').style.display = 'block';
     document.getElementById('logs-content').innerHTML = '<span class="logs-empty">Restarting...</span>';
     try {
-        const url = 'http://roost-dev.' + tld + '/api/restart?name=' + encodeURIComponent(appName);
+        const url = baseUrl + '/api/restart?name=' + encodeURIComponent(appName);
         const res = await fetch(url);
         if (!res.ok) throw new Error('Restart API returned ' + res.status);
         failed = false;
@@ -532,7 +533,7 @@ async function restartAndRetry() {
 fetchConfigPath();
 
 // Listen for theme changes from dashboard via SSE
-const themeSource = new EventSource('http://roost-dev.' + tld + '/api/events');
+const themeSource = new EventSource(baseUrl + '/api/events');
 themeSource.onmessage = (event) => {
     try {
         const data = JSON.parse(event.data);
@@ -549,7 +550,7 @@ themeSource.onmessage = (event) => {
 if (failed) {
     const errorMsg = container.dataset.error || '';
     showError(errorMsg);
-    fetch('http://roost-dev.' + tld + '/api/logs?name=' + encodeURIComponent(appName))
+    fetch(baseUrl + '/api/logs?name=' + encodeURIComponent(appName))
         .then(r => r.json())
         .then(lines => {
             if (lines && lines.length > 0) {

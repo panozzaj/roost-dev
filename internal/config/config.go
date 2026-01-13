@@ -98,8 +98,8 @@ func (s *AppStore) Load() error {
 		name := entry.Name()
 		path := filepath.Join(s.cfg.Dir, name)
 
-		// Skip hidden files and config files (config.json, config-*.json)
-		if strings.HasPrefix(name, ".") || name == "config.json" || strings.HasPrefix(name, "config-") {
+		// Skip hidden files, config files (config.json, config-*.json), and certs directory
+		if strings.HasPrefix(name, ".") || name == "config.json" || strings.HasPrefix(name, "config-") || name == "certs" {
 			continue
 		}
 
