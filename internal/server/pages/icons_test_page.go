@@ -441,18 +441,18 @@ h3 { color: var(--text-secondary); margin-top: 24px; margin-bottom: 12px; font-s
     <h2>Button Previews</h2>
     <h3>Icon-only buttons (with tooltips)</h3>
     <div class="button-preview">
-        <button class="btn btn-icon-only" title="Copy logs">
+        <button class="btn btn-icon-only" data-tooltip="Copy logs">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
             </svg>
         </button>
-        <button class="btn btn-icon-only" title="Copy for agent">
+        <button class="btn btn-icon-only" data-tooltip="Copy for agent">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
             </svg>
         </button>
-        <button class="btn btn-icon-only" title="Fix with Claude Code">
+        <button class="btn btn-icon-only" data-tooltip="Fix with Claude Code">
             <svg viewBox="0 0 24 24" fill="none" stroke="#da7756" stroke-width="2" stroke-linecap="round">
                 <circle cx="12" cy="12" r="2.5" fill="#da7756"/>
                 <line x1="12" y1="2" x2="12" y2="6"/>
@@ -465,7 +465,7 @@ h3 { color: var(--text-secondary); margin-top: 24px; margin-bottom: 12px; font-s
                 <line x1="17.07" y1="6.93" x2="19.78" y2="4.22"/>
             </svg>
         </button>
-        <button class="btn btn-icon-only" title="Open config file">
+        <button class="btn btn-icon-only" data-tooltip="Open config file">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
                 <polyline points="15 3 21 3 21 9"></polyline>
@@ -476,20 +476,20 @@ h3 { color: var(--text-secondary); margin-top: 24px; margin-bottom: 12px; font-s
 
     <h3>Icon + text buttons</h3>
     <div class="button-preview">
-        <button class="btn" title="Copy logs">
+        <button class="btn" data-tooltip="Copy logs">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
             </svg>
             Copy
         </button>
-        <button class="btn" title="Copy for agent">
+        <button class="btn" data-tooltip="Copy for agent">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
             </svg>
             Copy for agent
         </button>
-        <button class="btn" title="Fix with Claude Code">
+        <button class="btn" data-tooltip="Fix with Claude Code">
             <svg viewBox="0 0 24 24" fill="none" stroke="#da7756" stroke-width="2" stroke-linecap="round">
                 <circle cx="12" cy="12" r="2.5" fill="#da7756"/>
                 <line x1="12" y1="2" x2="12" y2="6"/>
@@ -503,7 +503,7 @@ h3 { color: var(--text-secondary); margin-top: 24px; margin-bottom: 12px; font-s
             </svg>
             Fix with Claude
         </button>
-        <button class="btn" title="Open config file">
+        <button class="btn" data-tooltip="Open config file">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
                 <polyline points="15 3 21 3 21 9"></polyline>
@@ -515,24 +515,24 @@ h3 { color: var(--text-secondary); margin-top: 24px; margin-bottom: 12px; font-s
 
     <h3>Alternative icon combinations</h3>
     <div class="button-preview">
-        <button class="btn btn-icon-only" title="Copy logs">
+        <button class="btn btn-icon-only" data-tooltip="Copy logs">
             <svg viewBox="0 0 24 24" fill="currentColor">
                 <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
             </svg>
         </button>
-        <button class="btn btn-icon-only" title="Copy for agent">
+        <button class="btn btn-icon-only" data-tooltip="Copy for agent">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
                 <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
                 <path d="M9 14h.01M15 14h.01M10 18c.5.3 1.2.5 2 .5s1.5-.2 2-.5"></path>
             </svg>
         </button>
-        <button class="btn btn-icon-only" title="Fix with Claude Code">
+        <button class="btn btn-icon-only" data-tooltip="Fix with Claude Code">
             <svg viewBox="0 0 24 24" fill="none" stroke="#da7756" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
             </svg>
         </button>
-        <button class="btn btn-icon-only" title="Open config file">
+        <button class="btn btn-icon-only" data-tooltip="Open config file">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                 <polyline points="14 2 14 8 20 8"></polyline>
@@ -678,7 +678,7 @@ h3 { color: var(--text-secondary); margin-top: 24px; margin-bottom: 12px; font-s
         <p style="margin-bottom: 16px;"><strong>Example dropdown layout:</strong></p>
         <div style="display: inline-flex; align-items: center; gap: 8px; margin-bottom: 16px;">
             <span style="font-size: 18px; font-weight: 600;">forever-start.roost-dev</span>
-            <button class="btn btn-icon-only" title="Settings" style="padding: 4px;">
+            <button class="btn btn-icon-only" data-tooltip="Settings" style="padding: 4px;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
                     <circle cx="12" cy="12" r="1"></circle>
                     <circle cx="19" cy="12" r="1"></circle>
@@ -689,13 +689,13 @@ h3 { color: var(--text-secondary); margin-top: 24px; margin-bottom: 12px; font-s
         <div style="background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; padding: 8px; display: inline-block;">
             <div style="display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-bottom: 1px solid var(--border-color);">
                 <span style="font-family: monospace; font-size: 13px; color: var(--text-secondary);">roost-dev-tests.yml</span>
-                <button class="btn btn-icon-only" title="Copy path" style="padding: 4px;">
+                <button class="btn btn-icon-only" data-tooltip="Copy path" style="padding: 4px;">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
                         <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                         <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
                     </svg>
                 </button>
-                <button class="btn btn-icon-only" title="Open in editor" style="padding: 4px;">
+                <button class="btn btn-icon-only" data-tooltip="Open in editor" style="padding: 4px;">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
                         <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
                         <polyline points="15 3 21 3 21 9"></polyline>

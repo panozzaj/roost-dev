@@ -55,7 +55,7 @@ var interstitialTmpl = template.Must(template.New("interstitial").Parse(`<!DOCTY
 </head>
 <body>
     <div class="container" data-error="{{.ErrorMsg}}" data-app="{{.AppName}}" data-display="{{.DisplayName}}" data-config="{{.ConfigName}}" data-tld="{{.TLD}}" data-failed="{{.Failed}}">
-        <div class="logo"><a href="//roost-dev.{{.TLD}}/" title="roost-dev dashboard">{{.Logo}}</a></div>
+        <div class="logo"><a href="//roost-dev.{{.TLD}}/" data-tooltip="roost-dev dashboard">{{.Logo}}</a></div>
         <div class="title-row">
             <h1>{{.DisplayName}}</h1>
             <div class="settings-dropdown">
@@ -73,9 +73,9 @@ var interstitialTmpl = template.Must(template.New("interstitial").Parse(`<!DOCTY
             <div class="logs-header">
                 <div class="logs-title">Logs</div>
                 <div class="logs-buttons" id="logs-buttons" style="display: none;">
-                    <button class="btn icon-btn" id="copy-btn" onclick="copyLogs()" title="Copy logs">{{.IconClipboard}}</button>
-                    <button class="btn icon-btn" id="copy-agent-btn" onclick="copyForAgent()" title="Copy for agent">{{.IconClipboardAgent}}</button>
-                    <button class="btn icon-btn claude-btn" id="fix-btn" onclick="fixWithClaudeCode()" style="display: none;" title="Fix with Claude Code">{{.IconClaude}}</button>
+                    <button class="btn icon-btn" id="copy-btn" onclick="copyLogs()" data-tooltip="Copy logs">{{.IconClipboard}}</button>
+                    <button class="btn icon-btn" id="copy-agent-btn" onclick="copyForAgent()" data-tooltip="Copy for agent">{{.IconClipboardAgent}}</button>
+                    <button class="btn icon-btn claude-btn" id="fix-btn" onclick="fixWithClaudeCode()" style="display: none;" data-tooltip="Fix with Claude Code">{{.IconClaude}}</button>
                 </div>
             </div>
             <div class="logs-content" id="logs-content"><span class="logs-empty">Waiting for output...</span></div>
