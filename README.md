@@ -2,30 +2,39 @@
 
 A local development proxy for all your projects. Like [puma-dev](https://github.com/puma/puma-dev), but language-agnostic.
 
-> **Warning**: This is a development tool only. Do not use in production.
+> [!WARNING]
+> This is a development tool only. Do not use in production.
 
-## Features
+## Key Features
 
 - Works with any web server (Node, Ruby, Python, Elixir, Go, Rust, etc.)
 - Dynamic port allocation - no more port conflicts
 - On-demand startup - services start when you access them
 - Subdomain support - `admin.myapp.test` passes through to your app
+- Wildcard domains - `*.myapp.test` works too
+- Static file serving
 - HTTPS support with locally-trusted certificates (automatic CA generation)
-- Web dashboard at `roost-dev.test`
+- Web dashboard
+- CLI for managing apps and services
+
+## Installation
+
+Requires Go 1.21+.
+
+```bash
+go install github.com/panozzaj/roost-dev/cmd/roost-dev@latest
+```
+
+This installs the `roost-dev` binary to your `$GOPATH/bin` (usually `~/go/bin`). Make sure this is in your PATH.
 
 ## Quick Start
 
 ```bash
-# One-time install (forwards port 80 to roost-dev)
-sudo roost-dev install
-
-# Start the server (or use: roost-dev service install)
-roost-dev serve
+# One-time setup
+sudo roost-dev setup
 ```
 
-Then visit:
-- **http://roost-test.test** - Verify it's working
-- **http://roost-dev.test** - Open the dashboard
+Then visit **http://roost-dev.test** to see the dashboard.
 
 Create configs in `~/.config/roost-dev/` for your apps (see Configuration below).
 
@@ -33,64 +42,38 @@ Create configs in `~/.config/roost-dev/` for your apps (see Configuration below)
 
 Place config files in `~/.config/roost-dev/`. The filename becomes the app name.
 
-### Command (recommended)
-
-```bash
-echo "npm run dev" > ~/.config/roost-dev/myapp
-# roost-dev assigns a PORT, starts the command, and proxies to it
-```
-
-Your command receives the port via `$PORT` environment variable. This is the preferred method because roost-dev dynamically assigns ports, avoiding conflicts between apps.
-
-### Static files
-
-```bash
-ln -s ~/projects/my-site ~/.config/roost-dev/mysite
-# Serves files from the directory
-```
-
-Or in YAML:
-
-```yaml
-# ~/.config/roost-dev/mysite.yml
-root: ~/projects/my-site
-static: true
-```
-
-Static sites show an HTML5 icon on the dashboard instead of a status dot (since they're always available).
-
-### Fixed port proxy
-
-```bash
-echo "3000" > ~/.config/roost-dev/myapp
-# Proxies http://myapp.test to localhost:3000
-```
-
-> **Note**: Fixed ports can conflict with other apps. Prefer using a command with `$PORT` when possible.
-
-### YAML config
+### YAML config (recommended)
 
 ```yaml
 # ~/.config/roost-dev/myproject.yml
-name: myproject
-description: My Project
 root: ~/projects/myproject
 cmd: bin/rails server -p $PORT -b 127.0.0.1
 ```
 
-For multi-service projects:
+Your command receives the port via `$PORT` environment variable. roost-dev dynamically assigns ports, avoiding conflicts between apps.
+
+Optional fields:
+
+```yaml
+name: myproject # defaults to filename without extension
+description: My App # shown on dashboard
+```
+
+### Multi-service projects
+
+For projects with multiple services:
 
 ```yaml
 name: myproject
 root: ~/projects/myproject
 services:
-  backend:
-    cmd: bin/rails server -p $PORT
-  frontend:
-    cmd: npm start
-    depends_on: [backend]
-    env:
-      API_URL: http://backend-myproject.test
+    backend:
+        cmd: bin/rails server -p $PORT
+    frontend:
+        cmd: npm start
+        depends_on: [backend]
+        env:
+            API_URL: http://backend-myproject.test
 ```
 
 Access at `http://frontend-myproject.test` and `http://backend-myproject.test`.
@@ -109,6 +92,36 @@ cmd: bundle exec jekyll serve --port $PORT --host 127.0.0.1 --livereload-port $(
 ```
 
 Note: Port numbers must be under 65535, so keep offsets small when roost-dev assigns high ports (50000+).
+
+### Static files
+
+For serving static files, use a symlink to the directory:
+
+```bash
+ln -s ~/projects/my-site ~/.config/roost-dev/mysite
+# Serves files from ~/projects/my-site at http://mysite.test
+```
+
+Or in YAML:
+
+```yaml
+# ~/.config/roost-dev/mysite.yml
+root: ~/projects/my-site
+static: true
+```
+
+Static sites show an HTML5 icon on the dashboard (since they're always available).
+
+### Fixed port proxy
+
+If you're already running a server on a fixed port:
+
+```bash
+echo "3000" > ~/.config/roost-dev/myapp
+# Proxies http://myapp.test to localhost:3000
+```
+
+> **Note**: Fixed ports can conflict between apps. Prefer YAML with `$PORT` when possible.
 
 ## Subdomains
 
@@ -132,17 +145,7 @@ roost-dev serve --tld dev
 
 ## CLI Commands
 
-```
-roost-dev serve           Start the server
-roost-dev list            List configured apps and their status
-roost-dev start <app>     Start an app
-roost-dev stop <app>      Stop an app
-roost-dev restart <app>   Restart an app
-roost-dev install         Setup port forwarding (requires sudo)
-roost-dev uninstall       Remove port forwarding (requires sudo)
-roost-dev service         Manage background service (install/uninstall/status)
-roost-dev cert            Manage HTTPS certificates (install/uninstall/status)
-```
+See `roost-dev --help` for a list of commands.
 
 Run `roost-dev <command> --help` for command-specific options.
 
@@ -161,6 +164,7 @@ roost-dev service uninstall && roost-dev service install
 ```
 
 Now you can access your apps via HTTPS:
+
 - **https://myapp.test** - Your app with HTTPS
 - **https://roost-dev.test** - Dashboard with HTTPS
 - **https://anyapp.test** - Any domain works automatically
@@ -168,6 +172,7 @@ Now you can access your apps via HTTPS:
 Certificates are generated on-demand for each domain. Both HTTP and HTTPS work simultaneously.
 
 To check certificate status:
+
 ```bash
 roost-dev cert status
 ```
