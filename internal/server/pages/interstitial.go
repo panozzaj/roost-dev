@@ -55,7 +55,7 @@ var interstitialTmpl = template.Must(template.New("interstitial").Parse(`<!DOCTY
 </head>
 <body>
     <div class="container" data-error="{{.ErrorMsg}}" data-app="{{.AppName}}" data-display="{{.DisplayName}}" data-config="{{.ConfigName}}" data-tld="{{.TLD}}" data-failed="{{.Failed}}">
-        <div class="logo"><a href="//roost-dev.{{.TLD}}/" data-tooltip="roost-dev dashboard">{{.Logo}}</a></div>
+        <div class="logo"><a href="//roost-dev.{{.TLD}}/">{{.Logo}}</a></div>
         <div class="title-row">
             <h1>{{.DisplayName}}</h1>
             <div class="settings-dropdown">
