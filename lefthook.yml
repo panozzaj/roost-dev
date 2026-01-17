@@ -24,6 +24,10 @@ pre-commit:
           exclude: '**/icons_test_page*'
           run: "! grep -n '<svg' {staged_files} || (echo 'Error: Use ICONS.* instead of inline SVGs' && exit 1)"
 
+        - name: no-title-attr
+          glob: 'internal/server/pages/*.go'
+          run: '! grep -n ''title="'' {staged_files} || (echo ''Error: Use data-tooltip instead of title for instant hover'' && exit 1)'
+
         - name: eslint
           glob: 'internal/**/*.js'
           run: npx eslint {staged_files}
