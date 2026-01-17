@@ -86,6 +86,15 @@ func isServiceInstalled() (bool, bool) {
 	return true, true
 }
 
+// isPfPlistOutdated checks if the pf LaunchDaemon plist differs from expected.
+func isPfPlistOutdated() bool {
+	content, err := os.ReadFile(launchdPlistPath)
+	if err != nil {
+		return false // File doesn't exist or can't be read
+	}
+	return string(content) != expectedPfPlistContent
+}
+
 func main() {
 	// Handle no args or help
 	if len(os.Args) < 2 {
@@ -442,6 +451,9 @@ DESCRIPTION:
     Port forwarding:
       - Port 80  → 9280 (HTTP)
       - Port 443 → 9443 (HTTPS)
+
+    A LaunchDaemon reloads the pf rules every 30 seconds, ensuring they
+    persist even when Docker or other tools reload pf.conf.
 
     Requires sudo for system configuration.
 
@@ -1212,6 +1224,43 @@ const (
 	pfAnchorPath     = "/etc/pf.anchors/roost-dev"
 	launchdPlistPath = "/Library/LaunchDaemons/dev.roost.pfctl.plist"
 	globalConfigName = "config.json"
+
+	// expectedPfPlistContent is the expected content of the pf LaunchDaemon plist.
+	// Used by both isPfPlistOutdated() and runPortsInstall() to stay in sync.
+	//
+	// Architecture note: macOS pf (packet filter) uses anchors to organize rules.
+	// We add our rules to /etc/pf.anchors/roost-dev and reference them from /etc/pf.conf.
+	// The LaunchDaemon loads ONLY our anchor (not the full pf.conf) every 30 seconds.
+	//
+	// Why periodic reloading?
+	// - Docker and other tools may reload /etc/pf.conf, which can clear anchor state
+	// - By reloading just our anchor periodically, we restore rules without affecting
+	//   other pf users (Docker, VPNs, etc.)
+	// - Using "-a roost-dev" targets only our anchor, leaving other rules untouched
+	//
+	// The 30-second interval ensures rules are restored quickly after Docker interference
+	// while being lightweight (pfctl anchor reload is idempotent and fast).
+	expectedPfPlistContent = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>dev.roost.pfctl</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/sbin/pfctl</string>
+        <string>-a</string>
+        <string>roost-dev</string>
+        <string>-f</string>
+        <string>/etc/pf.anchors/roost-dev</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StartInterval</key>
+    <integer>30</integer>
+</dict>
+</plist>
+`
 )
 
 func loadGlobalConfig(configDir string) (*GlobalConfig, error) {
@@ -1404,27 +1453,8 @@ rdr pass on lo0 inet6 proto tcp from any to any port 443 -> ::1 port 9443
 		}
 	}
 
-	// Create launchd plist for loading pf rules on boot
-	launchdContent := `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>dev.roost.pfctl</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/sbin/pfctl</string>
-        <string>-e</string>
-        <string>-f</string>
-        <string>/etc/pf.conf</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-</dict>
-</plist>
-`
-	// Create launchd plist (no message - reduce verbosity)
-	if err := os.WriteFile(launchdPlistPath, []byte(launchdContent), 0644); err != nil {
+	// Create launchd plist (see expectedPfPlistContent for architecture notes)
+	if err := os.WriteFile(launchdPlistPath, []byte(expectedPfPlistContent), 0644); err != nil {
 		return fmt.Errorf("writing launchd plist: %w", err)
 	}
 
@@ -1799,10 +1829,29 @@ func runSetupWizard(configDir, tld string) {
 	fmt.Println("Step 1/3: Port Forwarding")
 	fmt.Println()
 	if isPortForwardingInstalled(tld) {
-		fmt.Printf("%s✓ Already installed%s\n", green, reset)
-		fmt.Println("  Found: /etc/pf.anchors/roost-dev")
-		fmt.Println("  Found: /Library/LaunchDaemons/dev.roost.pfctl.plist")
-		fmt.Printf("  Found: /etc/resolver/%s\n", tld)
+		if isPfPlistOutdated() {
+			fmt.Printf("%s⚠ Installed but config differs%s\n", yellow, reset)
+			fmt.Println("  Found: /etc/pf.anchors/roost-dev")
+			fmt.Println("  Found: /Library/LaunchDaemons/dev.roost.pfctl.plist (differs)")
+			fmt.Printf("  Found: /etc/resolver/%s\n", tld)
+			fmt.Println()
+			fmt.Println("Requires: sudo (will prompt for password)")
+			fmt.Println()
+			if confirmStep("Update port forwarding configuration?") {
+				if err := runPortsInstall(configDir, tld); err != nil {
+					fmt.Printf("\n%s⚠ Update failed: %v%s\n", yellow, err, reset)
+				} else {
+					fmt.Printf("%s✓ Port forwarding updated%s\n", green, reset)
+				}
+			} else {
+				fmt.Println("Skipped. You can update later with: roost-dev ports install")
+			}
+		} else {
+			fmt.Printf("%s✓ Already installed%s\n", green, reset)
+			fmt.Println("  Found: /etc/pf.anchors/roost-dev")
+			fmt.Println("  Found: /Library/LaunchDaemons/dev.roost.pfctl.plist")
+			fmt.Printf("  Found: /etc/resolver/%s\n", tld)
+		}
 	} else {
 		fmt.Println("This step lets you access apps at http://myapp.test instead of")
 		fmt.Println("http://localhost:9280. It configures macOS packet filter (pf) to")
@@ -1812,8 +1861,11 @@ func runSetupWizard(configDir, tld string) {
 		fmt.Println("  - Creates /etc/pf.anchors/roost-dev (firewall redirect rules)")
 		fmt.Println("  - Adds anchor to /etc/pf.conf (backs up original first)")
 		fmt.Println("  - Creates /Library/LaunchDaemons/dev.roost.pfctl.plist")
-		fmt.Println("    (loads pf rules on boot)")
+		fmt.Println("    (loads pf rules on boot and reloads every 30s)")
 		fmt.Printf("  - Creates /etc/resolver/%s (DNS for .%s domain)\n", tld, tld)
+		fmt.Println()
+		fmt.Println("Note: Rules reload periodically to coexist with Docker/VPNs that")
+		fmt.Println("      may also modify pf rules.")
 		fmt.Println()
 		fmt.Println("Requires: sudo (will prompt for password)")
 		fmt.Println()

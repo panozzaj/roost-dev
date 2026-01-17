@@ -196,6 +196,16 @@ roost-dev service uninstall   # Stop and remove
 
 Logs are written to `~/Library/Logs/roost-dev/`.
 
+## Known Issues
+
+### Docker
+
+Docker Desktop on macOS may interfere with roost-dev's port forwarding. Both use macOS's `pf` (packet filter) for port redirection, and Docker can clear roost-dev's rules when it starts or restarts.
+
+roost-dev includes a workaround: a LaunchDaemon that reloads the pf rules every 30 seconds. This means if Docker clears the rules, they'll be restored within 30 seconds.
+
+If you're heavily using Docker with roost-dev and encounter issues, pull requests are welcome to improve this integration.
+
 ## License
 
 MIT
