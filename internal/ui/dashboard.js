@@ -1172,10 +1172,15 @@ function copyForAgent(name, event) {
         bt +
         bt +
         '\n\n' +
-        'To restart the app: roost-dev restart ' +
+        'Useful commands:\n' +
+        '  roost-dev restart ' +
         name +
-        '\n' +
-        'For full documentation: roost-dev docs\n\n' +
+        '  # Restart this app\n' +
+        '  roost-dev logs ' +
+        name +
+        '     # View logs\n' +
+        '  roost-dev --help              # CLI help\n' +
+        '  roost-dev docs                # Full documentation\n\n' +
         'Please help me understand and fix this error.'
 
     var textarea = document.createElement('textarea')
