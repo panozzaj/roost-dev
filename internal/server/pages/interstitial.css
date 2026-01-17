@@ -246,11 +246,33 @@ h1 {
 .icon-btn {
     padding: 6px;
     margin-top: -4px;
+    position: relative;
 }
 .icon-btn svg {
     width: 18px;
     height: 18px;
     display: block;
+}
+.icon-btn::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-top: 6px;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+    z-index: 101;
+}
+.icon-btn:hover::after {
+    opacity: 1;
 }
 .claude-btn {
     animation: claude-pulse 5s ease-in-out infinite;
