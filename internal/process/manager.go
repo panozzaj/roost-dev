@@ -208,6 +208,14 @@ func (m *Manager) Start(name, command, dir string, env map[string]string) (*Proc
 		cleanupRailsPID(dir)
 	}
 
+	// Check if working directory exists
+	if dir != "" {
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			m.mu.Unlock()
+			return nil, fmt.Errorf("working directory does not exist: %s", dir)
+		}
+	}
+
 	// Find a free port
 	port, err := m.findFreePort()
 	if err != nil {
@@ -364,6 +372,14 @@ func (m *Manager) StartAsync(name, command, dir string, env map[string]string) (
 	// Clean up stale Rails PID file if this looks like a Rails server
 	if strings.Contains(command, "rails server") || strings.Contains(command, "rails s") {
 		cleanupRailsPID(dir)
+	}
+
+	// Check if working directory exists
+	if dir != "" {
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			m.mu.Unlock()
+			return nil, fmt.Errorf("working directory does not exist: %s", dir)
+		}
 	}
 
 	// Find a free port

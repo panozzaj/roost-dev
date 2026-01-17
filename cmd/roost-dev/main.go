@@ -798,6 +798,34 @@ func runServiceInstall() error {
 		return fmt.Errorf("creating LaunchAgents directory: %w", err)
 	}
 
+	// Build environment variables section
+	// Capture key environment variables from current session so spawned processes
+	// have access to user's PATH (with nvm, rbenv, etc.), HOME, and other essentials
+	envVars := []struct{ key, fallback string }{
+		{"HOME", os.Getenv("HOME")},
+		{"USER", os.Getenv("USER")},
+		{"PATH", os.Getenv("PATH")},
+		{"SHELL", "/bin/zsh"},
+		{"LANG", "en_US.UTF-8"},
+	}
+
+	var envSection strings.Builder
+	envSection.WriteString("    <key>EnvironmentVariables</key>\n")
+	envSection.WriteString("    <dict>\n")
+	for _, ev := range envVars {
+		val := ev.fallback
+		if val == "" {
+			continue
+		}
+		// Escape XML special characters
+		val = strings.ReplaceAll(val, "&", "&amp;")
+		val = strings.ReplaceAll(val, "<", "&lt;")
+		val = strings.ReplaceAll(val, ">", "&gt;")
+		envSection.WriteString(fmt.Sprintf("        <key>%s</key>\n", ev.key))
+		envSection.WriteString(fmt.Sprintf("        <string>%s</string>\n", val))
+	}
+	envSection.WriteString("    </dict>\n")
+
 	// Generate plist content
 	plistContent := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -810,12 +838,7 @@ func runServiceInstall() error {
         <string>%s</string>
         <string>serve</string>
     </array>
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>SHELL</key>
-        <string>/bin/zsh</string>
-    </dict>
-    <key>RunAtLoad</key>
+%s    <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
     <true/>
@@ -825,7 +848,7 @@ func runServiceInstall() error {
     <string>%s/stderr.log</string>
 </dict>
 </plist>
-`, binaryPath, logsDir, logsDir)
+`, binaryPath, envSection.String(), logsDir, logsDir)
 
 	fmt.Printf("Creating %s...\n", plistPath)
 	if err := os.WriteFile(plistPath, []byte(plistContent), 0644); err != nil {

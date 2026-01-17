@@ -1,5 +1,5 @@
 #!/bin/bash
-# Rebuild and restart the launchd-managed roost-dev server
+# Rebuild and restart roost-dev
 
 set -e
 
@@ -17,7 +17,10 @@ sleep 2
 pkill -9 roost-dev 2>/dev/null || true
 launchctl bootout gui/$(id -u)/com.roost-dev 2>/dev/null || true
 sleep 1
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.roost-dev.plist
+
+# Reinstall service (regenerates plist with current PATH, HOME, etc.)
+echo "Installing service..."
+roost-dev service install
 
 echo "Waiting for server to start..."
 sleep 1

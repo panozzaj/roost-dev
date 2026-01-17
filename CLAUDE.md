@@ -3,31 +3,43 @@
 ## Managing roost-dev during development
 
 There are TWO versions of roost-dev:
+
 1. **Installed version**: `/Users/anthony/go/bin/roost-dev` (managed by launchd)
 2. **Local build**: `/Users/anthony/Documents/dev/roost-dev/roost-dev`
 
-### Option 1: Use air for hot-reloading (recommended)
-
-[air](https://github.com/air-verse/air) watches for file changes and auto-rebuilds. Config is in `.air.toml`.
-
-```bash
-# Install air (one-time)
-go install github.com/air-verse/air@latest
-
-# Stop the launchd-managed version and any running instances
-launchctl bootout gui/$(id -u)/com.roost-dev 2>/dev/null || true
-pkill -9 roost-dev 2>/dev/null || true
-
-# Run with air (auto-rebuilds on file changes)
-air
-```
-
-### Option 2: Use restart script
+### Use restart script
 
 ```bash
 # Rebuild and restart (uses launchd)
 ./scripts/restart.sh
 ```
+
+### Service management commands
+
+```bash
+# Stop the background service
+launchctl bootout gui/$(id -u)/com.roost-dev
+
+# Reinstall the service (writes new plist and loads it)
+./roost-dev service install
+
+# Or if using installed version:
+roost-dev service install
+```
+
+The `service install` command captures your current `PATH`, `HOME`, `USER`, etc. and writes them to the LaunchAgent plist. This ensures spawned processes have access to tools like nvm, rbenv, etc.
+
+### Setup/teardown wizards
+
+```bash
+# Interactive setup (port forwarding, CA cert, background service)
+roost-dev setup
+
+# Interactive teardown (reverse of setup)
+roost-dev teardown
+```
+
+Both wizards prompt for confirmation before each step and show which steps are already done.
 
 ### Debug request handling:
 
