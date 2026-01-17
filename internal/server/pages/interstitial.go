@@ -59,7 +59,7 @@ var interstitialTmpl = template.Must(template.New("interstitial").Parse(`<!DOCTY
         <div class="title-row">
             <h1>{{.DisplayName}}</h1>
             <div class="settings-dropdown">
-                <button class="settings-btn" onclick="toggleSettings()" aria-label="Settings">{{.IconGear}}</button>
+                <button class="settings-btn" onclick="toggleSettings()" aria-label="Settings" data-tooltip="Settings">{{.IconGear}}</button>
                 <div class="settings-menu" id="settings-menu">
                     <span class="settings-filename" id="settings-filename">{{.ConfigName}}.yml</span>
                     <button class="settings-action" id="copy-path-btn" onclick="copyConfigPath(event)" data-tooltip="Copy absolute path">{{.IconCopy}}</button>

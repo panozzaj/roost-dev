@@ -104,6 +104,7 @@ h1 {
     cursor: pointer;
     padding: 4px;
     border-radius: 4px;
+    position: relative;
     transition:
         color 0.2s,
         background 0.2s;
@@ -111,6 +112,30 @@ h1 {
 .settings-btn:hover {
     color: var(--text-secondary);
     background: var(--btn-bg);
+}
+.settings-btn::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-top: 6px;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+    z-index: 101;
+}
+.settings-btn:hover::after {
+    opacity: 1;
+}
+.settings-btn.open::after {
+    display: none;
 }
 .settings-btn svg {
     width: 18px;
@@ -256,10 +281,10 @@ h1 {
 .icon-btn::after {
     content: attr(data-tooltip);
     position: absolute;
-    top: 100%;
+    bottom: 100%;
     left: 50%;
     transform: translateX(-50%);
-    margin-top: 6px;
+    margin-bottom: 6px;
     background: var(--bg-tertiary);
     color: var(--text-secondary);
     font-size: 11px;
