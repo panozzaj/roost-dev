@@ -691,6 +691,21 @@ function updateApps(newApps) {
             if (fromEl.classList && fromEl.classList.contains('status-menu') && fromEl.classList.contains('visible')) {
                 toEl.classList.add('visible')
             }
+            // Preserve app settings menu open state
+            if (
+                fromEl.classList &&
+                fromEl.classList.contains('app-settings-menu') &&
+                fromEl.classList.contains('open')
+            ) {
+                toEl.classList.add('open')
+            }
+            if (
+                fromEl.classList &&
+                fromEl.classList.contains('app-settings-btn') &&
+                fromEl.classList.contains('open')
+            ) {
+                toEl.classList.add('open')
+            }
             return true
         },
         onNodeAdded: function (node) {
@@ -868,6 +883,30 @@ function renderApp(app) {
         '<span class="app-uptime">' +
         (app.uptime || '') +
         '</span>' +
+        '<div class="app-settings-dropdown">' +
+        '<button class="app-settings-btn" onclick="event.stopPropagation(); toggleAppSettings(\'' +
+        app.name +
+        '\')" aria-label="Settings">' +
+        ICONS.gear +
+        '</button>' +
+        '<div class="app-settings-menu" id="app-settings-menu-' +
+        app.name +
+        '">' +
+        '<span class="app-settings-filename">' +
+        app.name +
+        '.yml</span>' +
+        '<button class="app-settings-action" onclick="event.stopPropagation(); copyAppConfigPath(\'' +
+        app.name +
+        '\', event)">' +
+        ICONS.copy +
+        ' Copy path</button>' +
+        '<button class="app-settings-action" onclick="event.stopPropagation(); openAppConfig(\'' +
+        app.name +
+        '\', event)">' +
+        ICONS.externalLink +
+        ' Open in editor</button>' +
+        '</div>' +
+        '</div>' +
         (!(app.services && app.services.length) ||
         (app.services &&
             app.services.some(function (s) {
@@ -1135,6 +1174,78 @@ function copyLogs(name, event) {
         btn.innerHTML = origHTML
     }, 500)
 }
+
+// App settings dropdown functions
+function toggleAppSettings(name) {
+    var menu = document.getElementById('app-settings-menu-' + name)
+    var btn = menu.previousElementSibling
+    var wasOpen = menu.classList.contains('open')
+
+    // Close all other open menus first
+    document.querySelectorAll('.app-settings-menu.open').forEach(function (m) {
+        m.classList.remove('open')
+        m.previousElementSibling.classList.remove('open')
+    })
+
+    if (!wasOpen) {
+        menu.classList.add('open')
+        btn.classList.add('open')
+    }
+}
+
+function copyAppConfigPath(name, event) {
+    var path = '~/.config/roost-dev/' + name + '.yml'
+
+    var textarea = document.createElement('textarea')
+    textarea.value = path
+    textarea.style.position = 'fixed'
+    textarea.style.opacity = '0'
+    document.body.appendChild(textarea)
+    textarea.select()
+    document.execCommand('copy')
+    document.body.removeChild(textarea)
+
+    var btn = event.target.closest('button')
+    var origHTML = btn.innerHTML
+    btn.innerHTML = ICONS.checkGreen + ' Copied!'
+    setTimeout(function () {
+        btn.innerHTML = origHTML
+        // Close the menu after copying
+        var menu = document.getElementById('app-settings-menu-' + name)
+        menu.classList.remove('open')
+        menu.previousElementSibling.classList.remove('open')
+    }, 500)
+}
+
+function openAppConfig(name, event) {
+    fetch('/api/open-config?name=' + encodeURIComponent(name), { method: 'POST' })
+        .then(function (response) {
+            if (!response.ok) throw new Error('Failed to open config')
+            var btn = event.target.closest('button')
+            var origHTML = btn.innerHTML
+            btn.innerHTML = ICONS.checkGreen + ' Opened!'
+            setTimeout(function () {
+                btn.innerHTML = origHTML
+                // Close the menu after opening
+                var menu = document.getElementById('app-settings-menu-' + name)
+                menu.classList.remove('open')
+                menu.previousElementSibling.classList.remove('open')
+            }, 500)
+        })
+        .catch(function (err) {
+            console.error('Failed to open config:', err)
+        })
+}
+
+// Close app settings menu when clicking outside
+document.addEventListener('click', function (e) {
+    if (!e.target.closest('.app-settings-dropdown')) {
+        document.querySelectorAll('.app-settings-menu.open').forEach(function (m) {
+            m.classList.remove('open')
+            m.previousElementSibling.classList.remove('open')
+        })
+    }
+})
 
 function copyForAgent(name, event) {
     var logs = getLogsText(name)

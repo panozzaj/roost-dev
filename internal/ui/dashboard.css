@@ -229,6 +229,89 @@ h1 {
     color: var(--text-muted);
     min-width: 40px;
 }
+/* App settings dropdown - only visible on hover */
+.app-settings-dropdown {
+    position: relative;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+.app:hover .app-settings-dropdown {
+    opacity: 1;
+}
+.app-settings-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+.app-settings-btn:hover {
+    color: var(--text-secondary);
+    background: var(--btn-bg);
+}
+.app-settings-btn svg {
+    width: 16px;
+    height: 16px;
+    display: block;
+    transition: transform 0.2s;
+}
+.app-settings-btn.open svg {
+    transform: rotate(150deg);
+}
+.app-settings-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 8px;
+    margin-top: 4px;
+    z-index: 100;
+    min-width: 180px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+.app-settings-menu.open {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.app-settings-filename {
+    font-size: 12px;
+    color: var(--text-muted);
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 4px;
+}
+.app-settings-action {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 6px 8px;
+    border-radius: 4px;
+    font-size: 13px;
+    text-align: left;
+    width: 100%;
+}
+.app-settings-action:hover {
+    background: var(--btn-bg);
+    color: var(--text-primary);
+}
+.app-settings-action svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+}
 .services {
     padding: 0 8px 16px 42px;
 }
