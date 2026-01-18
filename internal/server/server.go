@@ -20,6 +20,25 @@ func slugify(name string) string {
 	return strings.ToLower(strings.ReplaceAll(name, " ", "-"))
 }
 
+// collectProcessNames returns a set of all process names for currently loaded apps.
+// For simple command apps, this is the app name.
+// For multi-service apps, this is "{service-name}-{app-name}" for each service.
+func (s *Server) collectProcessNames() map[string]bool {
+	names := make(map[string]bool)
+	for _, app := range s.apps.All() {
+		switch app.Type {
+		case config.AppTypeCommand:
+			names[app.Name] = true
+		case config.AppTypeYAML:
+			for _, svc := range app.Services {
+				procName := fmt.Sprintf("%s-%s", slugify(svc.Name), app.Name)
+				names[procName] = true
+			}
+		}
+	}
+	return names
+}
+
 // Server is the main roost-dev server
 type Server struct {
 	cfg           *config.Config
@@ -56,12 +75,29 @@ func New(cfg *config.Config) (*Server, error) {
 
 	// Set up config watcher
 	watcher, err := config.NewWatcher(cfg.Dir, func() {
+		// Collect process names for current apps before reload
+		oldProcessNames := s.collectProcessNames()
+
 		if err := s.apps.Reload(); err != nil {
 			s.logRequest("Config reload error: %v", err)
-		} else {
-			s.logRequest("Config reloaded")
-			s.broadcastStatus()
+			return
 		}
+
+		// Collect process names for apps after reload
+		newProcessNames := s.collectProcessNames()
+
+		// Stop processes for removed apps
+		for name := range oldProcessNames {
+			if _, exists := newProcessNames[name]; !exists {
+				if proc, found := s.procs.Get(name); found && proc.IsRunning() {
+					s.logRequest("Stopping orphaned process: %s", name)
+					s.procs.Stop(name)
+				}
+			}
+		}
+
+		s.logRequest("Config reloaded")
+		s.broadcastStatus()
 	})
 	if err != nil {
 		// Log but don't fail - config watching is optional
