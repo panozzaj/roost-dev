@@ -108,9 +108,25 @@ COMMANDS
     roost-dev start <app>     Start an app
     roost-dev stop <app>      Stop an app
     roost-dev restart <app>   Restart an app
+    roost-dev logs [app]      View logs (server logs if no app specified)
     roost-dev status          Show component status
     roost-dev setup           Interactive setup wizard
     roost-dev docs            Show this documentation
+
+VIEWING LOGS
+    Server logs (request routing):
+        roost-dev logs
+
+    App logs:
+        roost-dev logs myapp
+
+    Follow logs in real-time:
+        roost-dev logs -f myapp
+
+    Show last N lines:
+        roost-dev logs -n 50 myapp
+
+    Logs are also visible in the dashboard at http://roost-dev.test
 
 TROUBLESHOOTING
     "Address already in use"
@@ -119,7 +135,7 @@ TROUBLESHOOTING
             lsof -i :50000-60000 | grep LISTEN
 
     App won't start
-        1. Check the app's logs in the dashboard
+        1. Check the app's logs: roost-dev logs <app>
         2. Verify the command works manually:
                cd /path/to/app && PORT=3000 <your-command>
         3. Ensure dependencies (node, ruby, etc.) are available
