@@ -74,9 +74,40 @@ func New(cfg *config.Config) (*Server, error) {
 	}
 
 	// Set up config watcher
-	watcher, err := config.NewWatcher(cfg.Dir, func() {
+	watcher, err := config.NewWatcher(cfg.Dir, func(changedFiles []string) {
+		// Build a set of app names whose configs changed
+		changedApps := make(map[string]bool)
+		for _, filename := range changedFiles {
+			// Strip .yml/.yaml extension to get app name
+			appName := strings.TrimSuffix(filename, ".yml")
+			appName = strings.TrimSuffix(appName, ".yaml")
+			changedApps[appName] = true
+		}
+
 		// Collect process names for current apps before reload
 		oldProcessNames := s.collectProcessNames()
+
+		// Track which apps were running before reload
+		runningApps := make(map[string]bool)
+		for _, app := range s.apps.All() {
+			if changedApps[app.Name] {
+				switch app.Type {
+				case config.AppTypeCommand:
+					if proc, found := s.procs.Get(app.Name); found && proc.IsRunning() {
+						runningApps[app.Name] = true
+					}
+				case config.AppTypeYAML:
+					// Check if any service is running
+					for _, svc := range app.Services {
+						procName := fmt.Sprintf("%s-%s", slugify(svc.Name), app.Name)
+						if proc, found := s.procs.Get(procName); found && proc.IsRunning() {
+							runningApps[app.Name] = true
+							break
+						}
+					}
+				}
+			}
+		}
 
 		if err := s.apps.Reload(); err != nil {
 			s.logRequest("Config reload error: %v", err)
@@ -92,6 +123,27 @@ func New(cfg *config.Config) (*Server, error) {
 				if proc, found := s.procs.Get(name); found && proc.IsRunning() {
 					s.logRequest("Stopping orphaned process: %s", name)
 					s.procs.Stop(name)
+				}
+			}
+		}
+
+		// Restart apps that were running and whose config changed
+		for appName := range runningApps {
+			app, exists := s.apps.Get(appName)
+			if !exists {
+				continue // App was removed
+			}
+			s.logRequest("Restarting %s (config changed)", appName)
+			switch app.Type {
+			case config.AppTypeCommand:
+				s.procs.Stop(appName)
+				s.procs.StartAsync(appName, app.Command, app.Dir, app.Env)
+			case config.AppTypeYAML:
+				// Restart all services for this app
+				for _, svc := range app.Services {
+					procName := fmt.Sprintf("%s-%s", slugify(svc.Name), appName)
+					s.procs.Stop(procName)
+					s.procs.StartAsync(procName, svc.Command, svc.Dir, svc.Env)
 				}
 			}
 		}

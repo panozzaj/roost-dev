@@ -19,7 +19,7 @@ func TestWatcher(t *testing.T) {
 		}
 
 		var changed atomic.Bool
-		w, err := NewWatcher(tmpDir, func() {
+		w, err := NewWatcher(tmpDir, func(changedFiles []string) {
 			changed.Store(true)
 		})
 		if err != nil {
@@ -48,7 +48,7 @@ func TestWatcher(t *testing.T) {
 		tmpDir := t.TempDir()
 
 		var changed atomic.Bool
-		w, err := NewWatcher(tmpDir, func() {
+		w, err := NewWatcher(tmpDir, func(changedFiles []string) {
 			changed.Store(true)
 		})
 		if err != nil {
@@ -84,7 +84,7 @@ func TestWatcher(t *testing.T) {
 		}
 
 		var changed atomic.Bool
-		w, err := NewWatcher(tmpDir, func() {
+		w, err := NewWatcher(tmpDir, func(changedFiles []string) {
 			changed.Store(true)
 		})
 		if err != nil {
@@ -119,7 +119,7 @@ func TestWatcher(t *testing.T) {
 		}
 
 		var callCount atomic.Int32
-		w, err := NewWatcher(tmpDir, func() {
+		w, err := NewWatcher(tmpDir, func(changedFiles []string) {
 			callCount.Add(1)
 		})
 		if err != nil {
@@ -159,7 +159,7 @@ func TestWatcher(t *testing.T) {
 		}
 
 		var called atomic.Bool
-		w, err := NewWatcher(tmpDir, func() {
+		w, err := NewWatcher(tmpDir, func(changedFiles []string) {
 			called.Store(true)
 		})
 		if err != nil {
@@ -184,7 +184,7 @@ func TestWatcher(t *testing.T) {
 	})
 
 	t.Run("handles non-existent directory", func(t *testing.T) {
-		_, err := NewWatcher("/nonexistent/path/12345", func() {})
+		_, err := NewWatcher("/nonexistent/path/12345", func(changedFiles []string) {})
 		if err == nil {
 			t.Error("expected error for non-existent directory")
 		}
