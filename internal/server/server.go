@@ -93,14 +93,14 @@ func New(cfg *config.Config) (*Server, error) {
 			if changedApps[app.Name] {
 				switch app.Type {
 				case config.AppTypeCommand:
-					if proc, found := s.procs.Get(app.Name); found && proc.IsRunning() {
+					if proc, found := s.procs.Get(app.Name); found && (proc.IsRunning() || proc.IsStarting()) {
 						runningApps[app.Name] = true
 					}
 				case config.AppTypeYAML:
-					// Check if any service is running
+					// Check if any service is running or starting (starting might be hung)
 					for _, svc := range app.Services {
 						procName := fmt.Sprintf("%s-%s", slugify(svc.Name), app.Name)
-						if proc, found := s.procs.Get(procName); found && proc.IsRunning() {
+						if proc, found := s.procs.Get(procName); found && (proc.IsRunning() || proc.IsStarting()) {
 							runningApps[app.Name] = true
 							break
 						}

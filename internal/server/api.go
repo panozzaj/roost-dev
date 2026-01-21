@@ -81,15 +81,29 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 				s.procs.RestartAsync(proc.Name)
 			} else if app, found := s.apps.Get(name); found && app.Type == config.AppTypeYAML {
 				// Restart all services for multi-service app
+				// Stop ALL existing processes first (including those still starting/hung)
 				for i := range app.Services {
 					svc := &app.Services[i]
 					procName := fmt.Sprintf("%s-%s", slugify(svc.Name), app.Name)
 					if proc, found := s.procs.Get(procName); found {
-						s.procs.RestartAsync(proc.Name)
-					} else {
-						s.ensureDependencies(app, svc)
-						s.procs.StartAsync(procName, svc.Command, svc.Dir, svc.Env)
+						status := "idle"
+						if proc.IsRunning() {
+							status = "running"
+						} else if proc.IsStarting() {
+							status = "starting"
+						} else if proc.HasFailed() {
+							status = "failed"
+						}
+						s.logRequest("  Stopping %s (was %s)", procName, status)
+						s.procs.Stop(procName)
 					}
+				}
+				// Now start all services fresh with current config
+				for i := range app.Services {
+					svc := &app.Services[i]
+					procName := fmt.Sprintf("%s-%s", slugify(svc.Name), app.Name)
+					s.ensureDependencies(app, svc)
+					s.procs.StartAsync(procName, svc.Command, svc.Dir, svc.Env)
 				}
 			} else {
 				// Try to start it fresh
