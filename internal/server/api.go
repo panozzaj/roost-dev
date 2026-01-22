@@ -7,12 +7,33 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/panozzaj/roost-dev/internal/config"
 	"github.com/panozzaj/roost-dev/internal/server/pages"
 	"github.com/panozzaj/roost-dev/internal/ui"
 )
+
+// getClaudeCommand reads the claude_command from config.json fresh each time,
+// allowing changes without restarting the server.
+func (s *Server) getClaudeCommand() string {
+	configPath := filepath.Join(s.cfg.Dir, "config.json")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return s.cfg.ClaudeCommand // fallback to cached value
+	}
+	var cfg struct {
+		ClaudeCommand string `json:"claude_command"`
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return s.cfg.ClaudeCommand
+	}
+	if cfg.ClaudeCommand == "" {
+		return s.cfg.ClaudeCommand
+	}
+	return cfg.ClaudeCommand
+}
 
 // handleDashboard serves the web UI and API endpoints
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
@@ -78,7 +99,9 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 			// Try direct process name first
 			if proc, found := s.procs.Get(name); found {
 				s.logRequest("  Restarting process: %s", proc.Name)
-				s.procs.RestartAsync(proc.Name)
+				// Stop then start fresh to pick up any config changes
+				s.procs.Stop(proc.Name)
+				s.startByName(name)
 			} else if app, found := s.apps.Get(name); found && app.Type == config.AppTypeYAML {
 				// Restart all services for multi-service app
 				// Stop ALL existing processes first (including those still starting/hung)
@@ -275,7 +298,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	case "/api/claude-enabled":
 		// Check if claude command is configured
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]bool{"enabled": s.cfg.ClaudeCommand != ""})
+		json.NewEncoder(w).Encode(map[string]bool{"enabled": s.getClaudeCommand() != ""})
 
 	case "/api/open-terminal":
 		s.handleOpenTerminal(w, r)
@@ -353,8 +376,9 @@ func (s *Server) handleOpenTerminal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if claude command is configured
-	if s.cfg.ClaudeCommand == "" {
+	// Check if claude command is configured (read fresh from config.json)
+	claudeCmd := s.getClaudeCommand()
+	if claudeCmd == "" {
 		http.Error(w, "claude command not configured in ~/.config/roost-dev/config.json", http.StatusBadRequest)
 		return
 	}
@@ -406,7 +430,7 @@ Please help me fix this error. After fixing, restart the app and verify it start
 	tell current session of newWindow
 		write text "cd '%s' && %s \"$(cat '%s')\" ; rm -f '%s'"
 	end tell
-end tell`, escDir, s.cfg.ClaudeCommand, escPromptFile, escPromptFile)
+end tell`, escDir, claudeCmd, escPromptFile, escPromptFile)
 
 	cmd := exec.Command("osascript", "-e", script)
 	output, err := cmd.CombinedOutput()
