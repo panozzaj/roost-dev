@@ -15,6 +15,12 @@ A local development proxy for all your projects.
 - Web dashboard
 - CLI for managing apps and services
 
+## Video demo
+
+Here's a 5 minute demo of roost-dev in action:
+
+https://github.com/user-attachments/assets/c292a101-04b7-4fa7-80b9-abe0ac859d1b
+
 ## Installation
 
 Requires Go 1.21+.
