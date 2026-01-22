@@ -152,53 +152,6 @@ See `roost-dev --help` for a list of commands.
 
 Run `roost-dev <command> --help` for command-specific options.
 
-## HTTPS Support
-
-roost-dev supports HTTPS with automatic certificate generation for any domain.
-
-```bash
-# Generate CA and trust it (one-time, prompts for password)
-roost-dev cert install
-
-# Restart roost-dev to enable HTTPS
-roost-dev service uninstall && roost-dev service install
-
-# Restart your browser to pick up the new CA
-```
-
-Now you can access your apps via HTTPS:
-
-- **https://myapp.test** - Your app with HTTPS
-- **https://roost-dev.test** - Dashboard with HTTPS
-- **https://anyapp.test** - Any domain works automatically
-
-Certificates are generated on-demand for each domain. Both HTTP and HTTPS work simultaneously.
-
-To check certificate status:
-
-```bash
-roost-dev cert status
-```
-
-## Running as a Background Service (macOS)
-
-To have roost-dev start automatically on login and stay running:
-
-```bash
-roost-dev service install
-```
-
-This creates a LaunchAgent that runs `roost-dev serve` automatically. The service will restart if it crashes.
-
-To manage the service:
-
-```bash
-roost-dev service status      # Check if running
-roost-dev service uninstall   # Stop and remove
-```
-
-Logs are written to `~/Library/Logs/roost-dev/`.
-
 ## Known Issues
 
 > [!WARNING]
@@ -228,7 +181,6 @@ Pull requests to improve Docker compatibility are welcome.
 This tool is under active development. The setup and operation work on my Mac and meet my current needs across a variety of stacks. I plan to bump to version 1.0 once I get feedback that it works reliably on other machines and that setup is straightforward.
 
 If you run into issues or have improvements, I'm open to PRs. For larger changes, consider opening an issue first to discuss the approach. I prefer smaller incremental PRs over large ones.
-
 
 ## License
 
