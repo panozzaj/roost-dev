@@ -20,7 +20,7 @@ sleep 1
 
 # Reinstall service (regenerates plist with current PATH, HOME, etc.)
 echo "Installing service..."
-roost-dev service install
+ROOST_DEV_YES=1 roost-dev service install
 
 echo "Waiting for server to start..."
 sleep 1
