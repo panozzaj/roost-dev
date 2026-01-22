@@ -25,7 +25,7 @@ go install github.com/panozzaj/roost-dev/cmd/roost-dev@latest
 
 This installs the `roost-dev` binary to your `$GOPATH/bin` (usually `~/go/bin`). Make sure this is in your PATH.
 
-(I'm not super familiar with the Golang ecosystem, so if there's a better way to distribute this package, please open an issue or PR.)
+(I'm not super familiar with the Golang ecosystem, so if there's a better way to distribute this package or you run into issues, please open an issue or PR.)
 
 ## Quick Start
 
