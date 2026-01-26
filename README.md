@@ -174,6 +174,20 @@ roost-dev ports install
 
 Pull requests to improve Docker compatibility are welcome.
 
+## Claude Code Integration
+
+If you use [Claude Code](https://github.com/anthropics/claude-code), you can install the `/roost-dev` slash command to help set up roost-dev configurations for your projects:
+
+```bash
+# Create the commands directory if it doesn't exist
+mkdir -p ~/.claude/commands
+
+# Symlink the command (adjust the path to where you cloned roost-dev)
+ln -s /path/to/roost-dev/.claude/commands/roost-dev.md ~/.claude/commands/roost-dev.md
+```
+
+Then in any project, run `/roost-dev` in Claude Code to get help setting up roost-dev for that project.
+
 ## Status
 
 **Version 0.9.0** - Pre-release
