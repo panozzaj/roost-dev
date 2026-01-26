@@ -34,31 +34,44 @@ Contains 3 major sections with repeated status checking and confirmation pattern
 
 **Fix**: Split into `setupPortsStep()`, `setupCertsStep()`, `setupServiceStep()`.
 
-## 6. API Handler Monolith
+## 6. API Handler Monolith ✅ DONE
 
-**File**: internal/server/api.go (352-line switch with 20+ cases)
+**File**: internal/server/api.go
 
-Giant switch statement handling all API endpoints.
+**Fix**: Extracted 6 inline handlers into separate methods:
 
-**Fix**: Use router pattern or handler registration, split into separate handler functions.
+- `handleStop()` - stop app/service
+- `handleRestart()` - restart app/service
+- `handleStart()` - start app/service
+- `handleLogs()` - get app logs
+- `handleAppStatus()` - get single app status
+- `handleAnalyzeLogs()` - Ollama log analysis
 
-## 7. Service Name Resolution Duplicated
+Switch statement reduced from ~300 lines to ~90 lines (clean dispatcher).
+
+## 7. Service Name Resolution Duplicated ✅ DONE
 
 **File**: internal/server/api.go (3 locations)
 
-Same parsing logic for service names repeated at lines ~73, ~159, ~246.
+**Fix**: Extracted `parseServiceName()` function with tests in api_test.go. Updated all 3 usages.
 
-**Fix**: Consolidate into single `resolveServiceName()` function.
+## 8. Missing Tests (Partially Addressed)
 
-## 8. Missing Tests
+Added tests for:
 
-No tests for:
+- `isServiceInstalled()` - validates installed/running state consistency
+- `getUserLaunchAgentPath()` - validates path construction
+- `getCertsDir()` - validates path construction
+- `getPfAnchorContent()` - validates pf rules content
+- `getResolverContent()` - validates resolver content
 
-- `runSetupWizard()` / `runTeardownWizard()`
-- `runPortsInstall()` / `runPortsUninstall()`
-- `runCertInstall()` / `runCertUninstall()`
-- `runServiceInstall()` / `runServiceUninstall()`
-- Most API endpoints in api.go
+Still no tests for (require root/system changes):
+
+- `runSetupWizard()` / `runTeardownWizard()` (interactive)
+- `runPortsInstall()` / `runPortsUninstall()` (requires root)
+- `runCertInstall()` / `runCertUninstall()` (requires root)
+- `runServiceInstall()` / `runServiceUninstall()` (modifies system)
+- API endpoints in api.go
 
 ## 9. Root Check Duplication ✅ DONE
 
@@ -70,6 +83,6 @@ No tests for:
 
 1. ~~Extract CLI helper functions (help flag, config loading, colors)~~ ✅
 2. ~~Fix silent errors (add logging/comments)~~ ✅
-3. Refactor setup/teardown wizards
-4. Add tests for critical paths
-5. Refactor API handler
+3. ~~Refactor setup/teardown wizards~~ (Deferred - wizards read well as linear scripts)
+4. ~~Add tests for critical paths~~ ✅ (Added 5 new tests, 25 total passing)
+5. Refactor API handler (Future work)

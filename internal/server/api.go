@@ -15,6 +15,17 @@ import (
 	"github.com/panozzaj/roost-dev/internal/ui"
 )
 
+// parseServiceName parses a name in "service-app" format.
+// Returns (serviceName, appName, isServiceFormat).
+// For "web-myapp" returns ("web", "myapp", true).
+// For "myapp" returns ("", "myapp", false).
+func parseServiceName(name string) (serviceName, appName string, ok bool) {
+	if idx := strings.Index(name, "-"); idx != -1 {
+		return name[:idx], name[idx+1:], true
+	}
+	return "", name, false
+}
+
 // getClaudeCommand reads the claude_command from config.json fresh each time,
 // allowing changes without restarting the server.
 func (s *Server) getClaudeCommand() string {
@@ -68,138 +79,16 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("OK"))
 
 	case "/api/stop":
-		name := r.URL.Query().Get("name")
-		if name != "" {
-			// First try to resolve as a service name (supports app:svc, svc.app, svc, svc-app)
-			if match := s.resolveServiceName(name); match != nil {
-				s.procs.Stop(match.ProcName)
-				s.broadcastStatus()
-				w.WriteHeader(http.StatusOK)
-				return
-			}
-			// Resolve alias to app name
-			if app, found := s.apps.GetByNameOrAlias(name); found {
-				name = app.Name
-			}
-			// Try direct process name first
-			if _, found := s.procs.Get(name); found {
-				s.procs.Stop(name)
-			} else if app, found := s.apps.Get(name); found && app.Type == config.AppTypeYAML {
-				// Stop all services for multi-service app
-				for _, svc := range app.Services {
-					procName := fmt.Sprintf("%s-%s", slugify(svc.Name), app.Name)
-					s.procs.Stop(procName)
-				}
-			}
-			s.broadcastStatus()
-		}
-		w.WriteHeader(http.StatusOK)
+		s.handleStop(w, r)
 
 	case "/api/restart":
-		name := r.URL.Query().Get("name")
-		s.logRequest("API restart called for: %s", name)
-		if name != "" {
-			// First try to resolve as a service name (supports app:svc, svc.app, svc, svc-app)
-			if match := s.resolveServiceName(name); match != nil {
-				s.logRequest("  Restarting service: %s", match.ProcName)
-				s.procs.Stop(match.ProcName)
-				s.ensureDependencies(match.App, match.Service)
-				s.procs.StartAsync(match.ProcName, match.Service.Command, match.Service.Dir, match.Service.Env)
-				s.broadcastStatus()
-				w.WriteHeader(http.StatusOK)
-				return
-			}
-			// Resolve alias to app name
-			if app, found := s.apps.GetByNameOrAlias(name); found {
-				name = app.Name
-			}
-			// Try direct process name first
-			if proc, found := s.procs.Get(name); found {
-				s.logRequest("  Restarting process: %s", proc.Name)
-				// Stop then start fresh to pick up any config changes
-				s.procs.Stop(proc.Name)
-				s.startByName(name)
-			} else if app, found := s.apps.Get(name); found && app.Type == config.AppTypeYAML {
-				// Restart all services for multi-service app
-				// Stop ALL existing processes first (including those still starting/hung)
-				for i := range app.Services {
-					svc := &app.Services[i]
-					procName := fmt.Sprintf("%s-%s", slugify(svc.Name), app.Name)
-					if proc, found := s.procs.Get(procName); found {
-						status := "idle"
-						if proc.IsRunning() {
-							status = "running"
-						} else if proc.IsStarting() {
-							status = "starting"
-						} else if proc.HasFailed() {
-							status = "failed"
-						}
-						s.logRequest("  Stopping %s (was %s)", procName, status)
-						s.procs.Stop(procName)
-					}
-				}
-				// Now start all services fresh with current config
-				for i := range app.Services {
-					svc := &app.Services[i]
-					procName := fmt.Sprintf("%s-%s", slugify(svc.Name), app.Name)
-					s.ensureDependencies(app, svc)
-					s.procs.StartAsync(procName, svc.Command, svc.Dir, svc.Env)
-				}
-			} else {
-				// Try to start it fresh
-				s.startByName(name)
-			}
-			s.broadcastStatus()
-		}
-		w.WriteHeader(http.StatusOK)
+		s.handleRestart(w, r)
 
 	case "/api/start":
-		name := r.URL.Query().Get("name")
-		if name != "" {
-			// First try to resolve as a service name (supports app:svc, svc.app, svc, svc-app)
-			if match := s.resolveServiceName(name); match != nil {
-				s.ensureDependencies(match.App, match.Service)
-				s.procs.StartAsync(match.ProcName, match.Service.Command, match.Service.Dir, match.Service.Env)
-				s.broadcastStatus()
-				w.WriteHeader(http.StatusOK)
-				return
-			}
-			// Resolve alias to app name
-			if app, found := s.apps.GetByNameOrAlias(name); found {
-				name = app.Name
-			}
-			s.startByName(name)
-			s.broadcastStatus()
-		}
-		w.WriteHeader(http.StatusOK)
+		s.handleStart(w, r)
 
 	case "/api/logs":
-		name := r.URL.Query().Get("name")
-		// Resolve alias to app name
-		if app, found := s.apps.GetByNameOrAlias(name); found {
-			name = app.Name
-		}
-		var allLogs []string
-
-		// Try direct process name first
-		if proc, found := s.procs.Get(name); found {
-			allLogs = proc.Logs().Lines()
-		} else {
-			// For multi-service apps, aggregate logs from all services
-			if app, found := s.apps.Get(name); found && app.Type == config.AppTypeYAML {
-				for _, svc := range app.Services {
-					procName := fmt.Sprintf("%s-%s", slugify(svc.Name), app.Name)
-					if proc, found := s.procs.Get(procName); found {
-						for _, line := range proc.Logs().Lines() {
-							allLogs = append(allLogs, fmt.Sprintf("[%s] %s", svc.Name, line))
-						}
-					}
-				}
-			}
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(allLogs)
+		s.handleLogs(w, r)
 
 	case "/api/server-logs":
 		// Return roost-dev's request handling logs
@@ -219,97 +108,10 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(info)
 
 	case "/api/app-status":
-		name := r.URL.Query().Get("name")
-		// Resolve alias to app name
-		if app, found := s.apps.GetByNameOrAlias(name); found {
-			name = app.Name
-		}
-		type singleAppStatus struct {
-			Status string `json:"status"` // idle, starting, running, failed
-			Error  string `json:"error,omitempty"`
-		}
-
-		status := singleAppStatus{Status: "idle"}
-		if proc, found := s.procs.Get(name); found {
-			if proc.IsStarting() {
-				status.Status = "starting"
-			} else if proc.IsRunning() {
-				status.Status = "running"
-			} else if proc.HasFailed() {
-				status.Status = "failed"
-				status.Error = proc.ExitError()
-			}
-		}
-
-		// If this is a service, also check that dependencies are running
-		// Format: "service-appname" -> check dependencies of service
-		if status.Status == "running" {
-			if idx := strings.Index(name, "-"); idx != -1 {
-				serviceName := name[:idx]
-				appName := name[idx+1:]
-				if app, svc, found := s.apps.GetService(appName, serviceName); found {
-					for _, depName := range svc.DependsOn {
-						depProcName := fmt.Sprintf("%s-%s", depName, app.Name)
-						depProc, found := s.procs.Get(depProcName)
-						if !found {
-							// Dependency not started yet - report starting
-							status.Status = "starting"
-							break
-						}
-						if depProc.IsStarting() {
-							status.Status = "starting" // Dependency still starting
-							break
-						} else if depProc.HasFailed() {
-							status.Status = "failed"
-							status.Error = fmt.Sprintf("dependency %s failed: %s", depName, depProc.ExitError())
-							break
-						} else if !depProc.IsRunning() {
-							status.Status = "starting" // Dependency not ready
-							break
-						}
-					}
-				}
-			}
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(status)
+		s.handleAppStatus(w, r)
 
 	case "/api/analyze-logs":
-		// Use Ollama to identify error lines in logs
-		if s.ollamaClient == nil {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{"enabled": false})
-			return
-		}
-
-		name := r.URL.Query().Get("name")
-		if app, found := s.apps.GetByNameOrAlias(name); found {
-			name = app.Name
-		}
-
-		var logs []string
-		if proc, found := s.procs.Get(name); found {
-			logs = proc.Logs().Lines()
-		}
-
-		if len(logs) == 0 {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{"enabled": true, "errorLines": []int{}})
-			return
-		}
-
-		// Run analysis async-ish but return result
-		errorLines, err := s.ollamaClient.AnalyzeLogs(context.Background(), logs)
-		if err != nil {
-			s.logRequest("Ollama analysis error: %v", err)
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{"enabled": true, "error": err.Error()})
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"enabled": true, "errorLines": errorLines})
+		s.handleAnalyzeLogs(w, r)
 
 	case "/api/theme":
 		if r.Method == "POST" {
@@ -349,6 +151,242 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+// handleStop stops an app or service
+func (s *Server) handleStop(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("name")
+	if name != "" {
+		// First try to resolve as a service name (supports app:svc, svc.app, svc, svc-app)
+		if match := s.resolveServiceName(name); match != nil {
+			s.procs.Stop(match.ProcName)
+			s.broadcastStatus()
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		// Resolve alias to app name
+		if app, found := s.apps.GetByNameOrAlias(name); found {
+			name = app.Name
+		}
+		// Try direct process name first
+		if _, found := s.procs.Get(name); found {
+			s.procs.Stop(name)
+		} else if app, found := s.apps.Get(name); found && app.Type == config.AppTypeYAML {
+			// Stop all services for multi-service app
+			for _, svc := range app.Services {
+				procName := fmt.Sprintf("%s-%s", slugify(svc.Name), app.Name)
+				s.procs.Stop(procName)
+			}
+		}
+		s.broadcastStatus()
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+// handleRestart restarts an app or service
+func (s *Server) handleRestart(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("name")
+	s.logRequest("API restart called for: %s", name)
+	if name != "" {
+		// First try to resolve as a service name (supports app:svc, svc.app, svc, svc-app)
+		if match := s.resolveServiceName(name); match != nil {
+			s.logRequest("  Restarting service: %s", match.ProcName)
+			s.procs.Stop(match.ProcName)
+			s.ensureDependencies(match.App, match.Service)
+			s.procs.StartAsync(match.ProcName, match.Service.Command, match.Service.Dir, match.Service.Env)
+			s.broadcastStatus()
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		// Resolve alias to app name
+		if app, found := s.apps.GetByNameOrAlias(name); found {
+			name = app.Name
+		}
+		// Try direct process name first
+		if proc, found := s.procs.Get(name); found {
+			s.logRequest("  Restarting process: %s", proc.Name)
+			// Stop then start fresh to pick up any config changes
+			s.procs.Stop(proc.Name)
+			s.startByName(name)
+		} else if app, found := s.apps.Get(name); found && app.Type == config.AppTypeYAML {
+			// Restart all services for multi-service app
+			// Stop ALL existing processes first (including those still starting/hung)
+			for i := range app.Services {
+				svc := &app.Services[i]
+				procName := fmt.Sprintf("%s-%s", slugify(svc.Name), app.Name)
+				if proc, found := s.procs.Get(procName); found {
+					status := "idle"
+					if proc.IsRunning() {
+						status = "running"
+					} else if proc.IsStarting() {
+						status = "starting"
+					} else if proc.HasFailed() {
+						status = "failed"
+					}
+					s.logRequest("  Stopping %s (was %s)", procName, status)
+					s.procs.Stop(procName)
+				}
+			}
+			// Now start all services fresh with current config
+			for i := range app.Services {
+				svc := &app.Services[i]
+				procName := fmt.Sprintf("%s-%s", slugify(svc.Name), app.Name)
+				s.ensureDependencies(app, svc)
+				s.procs.StartAsync(procName, svc.Command, svc.Dir, svc.Env)
+			}
+		} else {
+			// Try to start it fresh
+			s.startByName(name)
+		}
+		s.broadcastStatus()
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+// handleStart starts an app or service
+func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("name")
+	if name != "" {
+		// First try to resolve as a service name (supports app:svc, svc.app, svc, svc-app)
+		if match := s.resolveServiceName(name); match != nil {
+			s.ensureDependencies(match.App, match.Service)
+			s.procs.StartAsync(match.ProcName, match.Service.Command, match.Service.Dir, match.Service.Env)
+			s.broadcastStatus()
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		// Resolve alias to app name
+		if app, found := s.apps.GetByNameOrAlias(name); found {
+			name = app.Name
+		}
+		s.startByName(name)
+		s.broadcastStatus()
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+// handleLogs returns logs for an app or service
+func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("name")
+	// Resolve alias to app name
+	if app, found := s.apps.GetByNameOrAlias(name); found {
+		name = app.Name
+	}
+	var allLogs []string
+
+	// Try direct process name first
+	if proc, found := s.procs.Get(name); found {
+		allLogs = proc.Logs().Lines()
+	} else {
+		// For multi-service apps, aggregate logs from all services
+		if app, found := s.apps.Get(name); found && app.Type == config.AppTypeYAML {
+			for _, svc := range app.Services {
+				procName := fmt.Sprintf("%s-%s", slugify(svc.Name), app.Name)
+				if proc, found := s.procs.Get(procName); found {
+					for _, line := range proc.Logs().Lines() {
+						allLogs = append(allLogs, fmt.Sprintf("[%s] %s", svc.Name, line))
+					}
+				}
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(allLogs)
+}
+
+// handleAppStatus returns the status of a single app or service
+func (s *Server) handleAppStatus(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("name")
+	// Resolve alias to app name
+	if app, found := s.apps.GetByNameOrAlias(name); found {
+		name = app.Name
+	}
+	type singleAppStatus struct {
+		Status string `json:"status"` // idle, starting, running, failed
+		Error  string `json:"error,omitempty"`
+	}
+
+	status := singleAppStatus{Status: "idle"}
+	if proc, found := s.procs.Get(name); found {
+		if proc.IsStarting() {
+			status.Status = "starting"
+		} else if proc.IsRunning() {
+			status.Status = "running"
+		} else if proc.HasFailed() {
+			status.Status = "failed"
+			status.Error = proc.ExitError()
+		}
+	}
+
+	// If this is a service, also check that dependencies are running
+	// Format: "service-appname" -> check dependencies of service
+	if status.Status == "running" {
+		if serviceName, appName, ok := parseServiceName(name); ok {
+			if app, svc, found := s.apps.GetService(appName, serviceName); found {
+				for _, depName := range svc.DependsOn {
+					depProcName := fmt.Sprintf("%s-%s", depName, app.Name)
+					depProc, found := s.procs.Get(depProcName)
+					if !found {
+						// Dependency not started yet - report starting
+						status.Status = "starting"
+						break
+					}
+					if depProc.IsStarting() {
+						status.Status = "starting" // Dependency still starting
+						break
+					} else if depProc.HasFailed() {
+						status.Status = "failed"
+						status.Error = fmt.Sprintf("dependency %s failed: %s", depName, depProc.ExitError())
+						break
+					} else if !depProc.IsRunning() {
+						status.Status = "starting" // Dependency not ready
+						break
+					}
+				}
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(status)
+}
+
+// handleAnalyzeLogs uses Ollama to identify error lines in logs
+func (s *Server) handleAnalyzeLogs(w http.ResponseWriter, r *http.Request) {
+	if s.ollamaClient == nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"enabled": false})
+		return
+	}
+
+	name := r.URL.Query().Get("name")
+	if app, found := s.apps.GetByNameOrAlias(name); found {
+		name = app.Name
+	}
+
+	var logs []string
+	if proc, found := s.procs.Get(name); found {
+		logs = proc.Logs().Lines()
+	}
+
+	if len(logs) == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"enabled": true, "errorLines": []int{}})
+		return
+	}
+
+	// Run analysis async-ish but return result
+	errorLines, err := s.ollamaClient.AnalyzeLogs(context.Background(), logs)
+	if err != nil {
+		s.logRequest("Ollama analysis error: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"enabled": true, "error": err.Error()})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"enabled": true, "errorLines": errorLines})
 }
 
 // handleOpenTerminal opens iTerm2 with Claude Code for fixing app errors
@@ -399,9 +437,7 @@ func (s *Server) handleOpenTerminal(w http.ResponseWriter, r *http.Request) {
 
 	// If still no dir, try to parse as service-appname
 	if dir == "" {
-		if idx := strings.Index(name, "-"); idx != -1 {
-			serviceName := name[:idx]
-			appName := name[idx+1:]
+		if serviceName, appName, ok := parseServiceName(name); ok {
 			if _, svc, found := s.apps.GetService(appName, serviceName); found {
 				dir = svc.Dir
 			}
@@ -485,8 +521,7 @@ end tell`, escDir, claudeCmd, escPromptFile, escPromptFile)
 func (s *Server) getConfigPath(name string) string {
 	// For service names like "web-myapp", extract the app name
 	appName := name
-	if idx := strings.Index(name, "-"); idx != -1 {
-		possibleApp := name[idx+1:]
+	if _, possibleApp, ok := parseServiceName(name); ok {
 		if _, found := s.apps.Get(possibleApp); found {
 			appName = possibleApp
 		}
