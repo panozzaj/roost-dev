@@ -438,13 +438,19 @@ func cmdAppControl(action string, args []string) {
 	// Check for help
 	for _, arg := range args {
 		if arg == "-h" || arg == "--help" || arg == "help" {
-			fmt.Printf(`roost-dev %s - %s an app
+			fmt.Printf(`roost-dev %s - %s an app or subprocess
 
 USAGE:
-    roost-dev %s <app-name>
+    roost-dev %s <name>
+
+NAME FORMATS:
+    myapp                 %s all services in the app
+    myapp:worker          %s the 'worker' service (colon syntax)
+    worker.myapp          %s the 'worker' service (dot syntax)
+    worker                %s the service if name is unique across apps
 
 Requires the roost-dev server to be running.
-`, action, strings.Title(action), action)
+`, action, strings.Title(action), action, strings.Title(action), strings.Title(action), strings.Title(action), strings.Title(action))
 			os.Exit(0)
 		}
 	}
@@ -2320,13 +2326,22 @@ func checkPortsStatus() (string, string) {
 	}
 
 	// Check if pf rules are loaded by checking if our anchor has rules
+	// Note: This requires root access, so it may fail even when forwarding works
 	cmd := exec.Command("/sbin/pfctl", "-a", "roost-dev", "-sr")
 	output, err := cmd.Output()
-	if err != nil || len(output) == 0 {
-		return "✗", "installed but not active"
+	if err == nil && len(output) > 0 {
+		return "✓", "80→9280, 443→9443"
 	}
 
-	return "✓", "80→9280, 443→9443"
+	// Fallback: try connecting to port 80 to see if forwarding is actually working
+	// This works even without root access to read pf rules
+	conn, err := net.DialTimeout("tcp", "127.0.0.1:80", 500*time.Millisecond)
+	if err == nil {
+		conn.Close()
+		return "✓", "80→9280, 443→9443"
+	}
+
+	return "✗", "installed but not active"
 }
 
 // checkCertStatus returns the status of HTTPS certificates

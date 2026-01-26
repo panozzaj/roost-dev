@@ -333,3 +333,101 @@ func (s *Server) startByName(name string) {
 		}
 	}
 }
+
+// ServiceMatch represents a resolved service name
+type ServiceMatch struct {
+	App      *config.App
+	Service  *config.Service
+	ProcName string // internal process name (e.g., "good-slow-roost-dev-tests")
+}
+
+// resolveServiceName resolves various name formats to a service.
+// Supported formats:
+//   - "app:service" (colon syntax)
+//   - "service.app" (dot syntax)
+//   - "service" (unique service name across all apps)
+//   - "service-app" (internal process name format)
+//
+// Returns nil if no match found or if ambiguous (multiple matches for bare service name).
+func (s *Server) resolveServiceName(name string) *ServiceMatch {
+	// Try colon syntax: "app:service"
+	if idx := strings.Index(name, ":"); idx != -1 {
+		appName := name[:idx]
+		svcName := name[idx+1:]
+		if app, found := s.apps.GetByNameOrAlias(appName); found {
+			for i := range app.Services {
+				svc := &app.Services[i]
+				if svc.Name == svcName {
+					return &ServiceMatch{
+						App:      app,
+						Service:  svc,
+						ProcName: fmt.Sprintf("%s-%s", slugify(svc.Name), app.Name),
+					}
+				}
+			}
+		}
+		return nil
+	}
+
+	// Try dot syntax: "service.app"
+	if idx := strings.LastIndex(name, "."); idx != -1 {
+		svcName := name[:idx]
+		appName := name[idx+1:]
+		if app, found := s.apps.GetByNameOrAlias(appName); found {
+			for i := range app.Services {
+				svc := &app.Services[i]
+				if svc.Name == svcName {
+					return &ServiceMatch{
+						App:      app,
+						Service:  svc,
+						ProcName: fmt.Sprintf("%s-%s", slugify(svc.Name), app.Name),
+					}
+				}
+			}
+		}
+		// Fall through to try other formats
+	}
+
+	// Try internal process name format: "service-app"
+	for _, app := range s.apps.All() {
+		if app.Type != config.AppTypeYAML {
+			continue
+		}
+		for i := range app.Services {
+			svc := &app.Services[i]
+			procName := fmt.Sprintf("%s-%s", slugify(svc.Name), app.Name)
+			if procName == name {
+				return &ServiceMatch{
+					App:      app,
+					Service:  svc,
+					ProcName: procName,
+				}
+			}
+		}
+	}
+
+	// Try bare service name (must be unique across all apps)
+	var matches []*ServiceMatch
+	for _, app := range s.apps.All() {
+		if app.Type != config.AppTypeYAML {
+			continue
+		}
+		for i := range app.Services {
+			svc := &app.Services[i]
+			if svc.Name == name {
+				matches = append(matches, &ServiceMatch{
+					App:      app,
+					Service:  svc,
+					ProcName: fmt.Sprintf("%s-%s", slugify(svc.Name), app.Name),
+				})
+			}
+		}
+	}
+
+	// Only return if exactly one match (unambiguous)
+	if len(matches) == 1 {
+		return matches[0]
+	}
+
+	return nil
+}

@@ -105,13 +105,21 @@ URLS AND ROUTING
 COMMANDS
     roost-dev serve           Start the server
     roost-dev list            List apps and status
-    roost-dev start <app>     Start an app
-    roost-dev stop <app>      Stop an app
-    roost-dev restart <app>   Restart an app
-    roost-dev logs [app]      View logs (server logs if no app specified)
+    roost-dev start <name>    Start an app or service
+    roost-dev stop <name>     Stop an app or service
+    roost-dev restart <name>  Restart an app or service
+    roost-dev logs [name]     View logs (server logs if no name specified)
     roost-dev status          Show component status
     roost-dev setup           Interactive setup wizard
     roost-dev docs            Show this documentation
+
+SERVICE NAME FORMATS
+    For start/stop/restart, you can target individual services:
+
+    myapp                 All services in the app
+    myapp:worker          The 'worker' service (colon syntax)
+    worker.myapp          The 'worker' service (dot syntax)
+    worker                The service if name is unique across apps
 
 VIEWING LOGS
     Server logs (request routing):

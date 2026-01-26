@@ -456,3 +456,111 @@ services:
 		}
 	})
 }
+
+func TestResolveServiceName(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &config.Config{TLD: "test", Dir: tmpDir}
+	apps := config.NewAppStore(cfg)
+	procs := process.NewManager()
+	s := newTestServer(cfg, apps, procs)
+
+	// Create test apps with services
+	yamlContent := `
+name: myapp
+root: /tmp
+services:
+  api:
+    cmd: python server.py
+  web:
+    cmd: npm start
+`
+	os.WriteFile(tmpDir+"/myapp.yml", []byte(yamlContent), 0644)
+
+	yamlContent2 := `
+name: otherapp
+root: /tmp
+services:
+  api:
+    cmd: go run main.go
+  worker:
+    cmd: python worker.py
+`
+	os.WriteFile(tmpDir+"/otherapp.yml", []byte(yamlContent2), 0644)
+
+	apps.Load()
+
+	t.Run("resolves colon syntax app:service", func(t *testing.T) {
+		match := s.resolveServiceName("myapp:web")
+		if match == nil {
+			t.Fatal("expected to resolve myapp:web")
+		}
+		if match.App.Name != "myapp" {
+			t.Errorf("expected app 'myapp', got %s", match.App.Name)
+		}
+		if match.Service.Name != "web" {
+			t.Errorf("expected service 'web', got %s", match.Service.Name)
+		}
+		if match.ProcName != "web-myapp" {
+			t.Errorf("expected procName 'web-myapp', got %s", match.ProcName)
+		}
+	})
+
+	t.Run("resolves dot syntax service.app", func(t *testing.T) {
+		match := s.resolveServiceName("web.myapp")
+		if match == nil {
+			t.Fatal("expected to resolve web.myapp")
+		}
+		if match.App.Name != "myapp" {
+			t.Errorf("expected app 'myapp', got %s", match.App.Name)
+		}
+		if match.Service.Name != "web" {
+			t.Errorf("expected service 'web', got %s", match.Service.Name)
+		}
+	})
+
+	t.Run("resolves internal process name format", func(t *testing.T) {
+		match := s.resolveServiceName("web-myapp")
+		if match == nil {
+			t.Fatal("expected to resolve web-myapp")
+		}
+		if match.ProcName != "web-myapp" {
+			t.Errorf("expected procName 'web-myapp', got %s", match.ProcName)
+		}
+	})
+
+	t.Run("resolves unique bare service name", func(t *testing.T) {
+		// 'worker' only exists in otherapp
+		match := s.resolveServiceName("worker")
+		if match == nil {
+			t.Fatal("expected to resolve 'worker'")
+		}
+		if match.App.Name != "otherapp" {
+			t.Errorf("expected app 'otherapp', got %s", match.App.Name)
+		}
+		if match.Service.Name != "worker" {
+			t.Errorf("expected service 'worker', got %s", match.Service.Name)
+		}
+	})
+
+	t.Run("returns nil for ambiguous bare service name", func(t *testing.T) {
+		// 'api' exists in both myapp and otherapp
+		match := s.resolveServiceName("api")
+		if match != nil {
+			t.Error("expected nil for ambiguous service name 'api'")
+		}
+	})
+
+	t.Run("returns nil for unknown service", func(t *testing.T) {
+		match := s.resolveServiceName("myapp:unknown")
+		if match != nil {
+			t.Error("expected nil for unknown service")
+		}
+	})
+
+	t.Run("returns nil for unknown app", func(t *testing.T) {
+		match := s.resolveServiceName("unknownapp:web")
+		if match != nil {
+			t.Error("expected nil for unknown app")
+		}
+	})
+}

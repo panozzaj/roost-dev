@@ -69,11 +69,18 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 	case "/api/stop":
 		name := r.URL.Query().Get("name")
-		// Resolve alias to app name
-		if app, found := s.apps.GetByNameOrAlias(name); found {
-			name = app.Name
-		}
 		if name != "" {
+			// First try to resolve as a service name (supports app:svc, svc.app, svc, svc-app)
+			if match := s.resolveServiceName(name); match != nil {
+				s.procs.Stop(match.ProcName)
+				s.broadcastStatus()
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			// Resolve alias to app name
+			if app, found := s.apps.GetByNameOrAlias(name); found {
+				name = app.Name
+			}
 			// Try direct process name first
 			if _, found := s.procs.Get(name); found {
 				s.procs.Stop(name)
@@ -90,12 +97,22 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 	case "/api/restart":
 		name := r.URL.Query().Get("name")
-		// Resolve alias to app name
-		if app, found := s.apps.GetByNameOrAlias(name); found {
-			name = app.Name
-		}
 		s.logRequest("API restart called for: %s", name)
 		if name != "" {
+			// First try to resolve as a service name (supports app:svc, svc.app, svc, svc-app)
+			if match := s.resolveServiceName(name); match != nil {
+				s.logRequest("  Restarting service: %s", match.ProcName)
+				s.procs.Stop(match.ProcName)
+				s.ensureDependencies(match.App, match.Service)
+				s.procs.StartAsync(match.ProcName, match.Service.Command, match.Service.Dir, match.Service.Env)
+				s.broadcastStatus()
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			// Resolve alias to app name
+			if app, found := s.apps.GetByNameOrAlias(name); found {
+				name = app.Name
+			}
 			// Try direct process name first
 			if proc, found := s.procs.Get(name); found {
 				s.logRequest("  Restarting process: %s", proc.Name)
@@ -138,11 +155,19 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 	case "/api/start":
 		name := r.URL.Query().Get("name")
-		// Resolve alias to app name
-		if app, found := s.apps.GetByNameOrAlias(name); found {
-			name = app.Name
-		}
 		if name != "" {
+			// First try to resolve as a service name (supports app:svc, svc.app, svc, svc-app)
+			if match := s.resolveServiceName(name); match != nil {
+				s.ensureDependencies(match.App, match.Service)
+				s.procs.StartAsync(match.ProcName, match.Service.Command, match.Service.Dir, match.Service.Env)
+				s.broadcastStatus()
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			// Resolve alias to app name
+			if app, found := s.apps.GetByNameOrAlias(name); found {
+				name = app.Name
+			}
 			s.startByName(name)
 			s.broadcastStatus()
 		}
