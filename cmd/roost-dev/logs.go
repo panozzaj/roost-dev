@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 )
@@ -56,14 +55,7 @@ Requires the roost-dev server to be running.`)
 
 	fs.Parse(args)
 
-	// Load config to get TLD
-	homeDir, _ := os.UserHomeDir()
-	configDir := filepath.Join(homeDir, ".config", "roost-dev")
-	globalCfg, err := loadGlobalConfig(configDir)
-	if err != nil {
-		globalCfg = &GlobalConfig{TLD: "test"}
-	}
-
+	globalCfg, _ := getConfigWithDefaults()
 	appName := fs.Arg(0)
 
 	// If no app name and not explicitly --server, default to server logs

@@ -59,18 +59,14 @@ EXAMPLES:
 }
 
 func cmdServiceInstall(args []string) {
-	// Check for help
-	for _, arg := range args {
-		if arg == "-h" || arg == "--help" || arg == "help" {
-			fmt.Println(`roost-dev service install - Install roost-dev as a background service
+	if checkHelpFlag(args, `roost-dev service install - Install roost-dev as a background service
 
 USAGE:
     roost-dev service install
 
 Installs a LaunchAgent that runs 'roost-dev serve' automatically on login.
-Logs are written to ~/Library/Logs/roost-dev/`)
-			os.Exit(0)
-		}
+Logs are written to ~/Library/Logs/roost-dev/`) {
+		os.Exit(0)
 	}
 
 	if err := runServiceInstall(); err != nil {
@@ -79,17 +75,13 @@ Logs are written to ~/Library/Logs/roost-dev/`)
 }
 
 func cmdServiceUninstall(args []string) {
-	// Check for help
-	for _, arg := range args {
-		if arg == "-h" || arg == "--help" || arg == "help" {
-			fmt.Println(`roost-dev service uninstall - Remove roost-dev background service
+	if checkHelpFlag(args, `roost-dev service uninstall - Remove roost-dev background service
 
 USAGE:
     roost-dev service uninstall
 
-Stops roost-dev and removes the LaunchAgent.`)
-			os.Exit(0)
-		}
+Stops roost-dev and removes the LaunchAgent.`) {
+		os.Exit(0)
 	}
 
 	if err := runServiceUninstall(); err != nil {
@@ -98,17 +90,13 @@ Stops roost-dev and removes the LaunchAgent.`)
 }
 
 func cmdServiceStatus(args []string) {
-	// Check for help
-	for _, arg := range args {
-		if arg == "-h" || arg == "--help" || arg == "help" {
-			fmt.Println(`roost-dev service status - Show service status
+	if checkHelpFlag(args, `roost-dev service status - Show service status
 
 USAGE:
     roost-dev service status
 
-Shows whether the LaunchAgent is installed and running.`)
-			os.Exit(0)
-		}
+Shows whether the LaunchAgent is installed and running.`) {
+		os.Exit(0)
 	}
 
 	runServiceStatus()
@@ -255,14 +243,11 @@ func runServiceInstall() error {
 }
 
 func runServiceUninstall() error {
-	green := "\033[32m"
-	reset := "\033[0m"
-
 	plistPath := getUserLaunchAgentPath()
 
 	// Check if plist exists
 	if _, err := os.Stat(plistPath); os.IsNotExist(err) {
-		fmt.Printf("%s✓ Service is not installed%s\n", green, reset)
+		fmt.Printf("%s✓ Service is not installed%s\n", colorGreen, colorReset)
 		return nil
 	}
 
@@ -272,7 +257,7 @@ func runServiceUninstall() error {
 		return fmt.Errorf("removal cancelled")
 	}
 
-	// Unload the agent
+	// Unload the agent (ignore errors - may not be running)
 	exec.Command("launchctl", "bootout", fmt.Sprintf("gui/%d/com.roost-dev", os.Getuid())).Run()
 
 	// Execute the plan for file deletion
@@ -280,7 +265,7 @@ func runServiceUninstall() error {
 		return err
 	}
 
-	fmt.Printf("%s✓ Service removed%s\n", green, reset)
+	fmt.Printf("%s✓ Service removed%s\n", colorGreen, colorReset)
 	return nil
 }
 

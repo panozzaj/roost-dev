@@ -176,9 +176,6 @@ QUICK START:
 func cmdServe(args []string) {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 
-	homeDir, _ := os.UserHomeDir()
-	defaultConfigDir := filepath.Join(homeDir, ".config", "roost-dev")
-
 	var (
 		configDir     string
 		httpPort      int
@@ -188,7 +185,7 @@ func cmdServe(args []string) {
 		tld           string
 	)
 
-	fs.StringVar(&configDir, "dir", defaultConfigDir, "Configuration directory")
+	fs.StringVar(&configDir, "dir", getDefaultConfigDir(), "Configuration directory")
 	fs.IntVar(&httpPort, "http-port", 9280, "HTTP port to listen on")
 	fs.IntVar(&httpsPort, "https-port", 9443, "HTTPS port to listen on")
 	fs.IntVar(&advertisePort, "advertise-port", 80, "Port to use in URLs (0 = same as http-port)")
@@ -333,15 +330,13 @@ CONFIGURATION:
 	// Warn if pf rules aren't set up but we're using port forwarding defaults
 	if httpPort != urlPort && urlPort == 80 {
 		if _, err := os.Stat(pfAnchorPath); os.IsNotExist(err) {
-			yellow := "\033[33m"
-			reset := "\033[0m"
-			fmt.Println(yellow + "WARNING: URLs like http://myapp.localhost won't work yet.")
+			fmt.Println(colorYellow + "WARNING: URLs like http://myapp.localhost won't work yet.")
 			fmt.Println("")
 			fmt.Println("  roost-dev is running on port 9280, but your browser will")
 			fmt.Println("  try port 80. Run this once to set up the redirect:")
 			fmt.Println("")
 			fmt.Println("    sudo roost-dev install")
-			fmt.Println(reset)
+			fmt.Println(colorReset)
 		}
 	}
 
@@ -387,16 +382,13 @@ Requires the roost-dev server to be running.
 func cmdSetup(args []string) {
 	fs := flag.NewFlagSet("setup", flag.ExitOnError)
 
-	homeDir, _ := os.UserHomeDir()
-	defaultConfigDir := filepath.Join(homeDir, ".config", "roost-dev")
-
 	var (
 		tld       string
 		configDir string
 	)
 
 	fs.StringVar(&tld, "tld", "test", "Top-level domain to configure")
-	fs.StringVar(&configDir, "dir", defaultConfigDir, "Configuration directory")
+	fs.StringVar(&configDir, "dir", getDefaultConfigDir(), "Configuration directory")
 
 	fs.Usage = func() {
 		fmt.Println(`roost-dev setup - Interactive setup wizard
@@ -494,12 +486,7 @@ Shows the status of:
 
 func runCommand(cmd, appName string) error {
 	// Load config to get TLD
-	homeDir, _ := os.UserHomeDir()
-	configDir := filepath.Join(homeDir, ".config", "roost-dev")
-	globalCfg, err := loadGlobalConfig(configDir)
-	if err != nil {
-		globalCfg = &GlobalConfig{TLD: "test"}
-	}
+	globalCfg, _ := getConfigWithDefaults()
 
 	// Show action in progress
 	switch cmd {
@@ -537,11 +524,6 @@ func runCommand(cmd, appName string) error {
 
 // runSetupWizard is the interactive setup wizard
 func runSetupWizard(configDir, tld string) {
-	red := "\033[31m"
-	yellow := "\033[33m"
-	green := "\033[32m"
-	reset := "\033[0m"
-
 	printLogo()
 	fmt.Println()
 	fmt.Println("Welcome to roost-dev setup!")
@@ -573,7 +555,7 @@ func runSetupWizard(configDir, tld string) {
 	// Check for root AFTER showing overview so user understands the context
 	if os.Geteuid() == 0 {
 		fmt.Println()
-		fmt.Printf("%sError: Do not run 'roost-dev setup' with sudo.%s\n", red, reset)
+		fmt.Printf("%sError: Do not run 'roost-dev setup' with sudo.%s\n", colorRed, colorReset)
 		fmt.Println()
 		fmt.Println("Run it as your normal user instead:")
 		fmt.Println("  roost-dev setup")
@@ -589,7 +571,7 @@ func runSetupWizard(configDir, tld string) {
 	fmt.Println()
 	if isPortForwardingInstalled(tld) {
 		if isPfPlistOutdated() {
-			fmt.Printf("%s⚠ Installed but config differs%s\n", yellow, reset)
+			fmt.Printf("%s⚠ Installed but config differs%s\n", colorYellow, colorReset)
 			fmt.Println("  Found: /etc/pf.anchors/roost-dev")
 			fmt.Println("  Found: /Library/LaunchDaemons/dev.roost.pfctl.plist (differs)")
 			fmt.Printf("  Found: /etc/resolver/%s\n", tld)
@@ -598,15 +580,15 @@ func runSetupWizard(configDir, tld string) {
 			fmt.Println()
 			if confirmStep("Update port forwarding configuration?") {
 				if err := runPortsInstall(configDir, tld); err != nil {
-					fmt.Printf("\n%s⚠ Update failed: %v%s\n", yellow, err, reset)
+					fmt.Printf("\n%s⚠ Update failed: %v%s\n", colorYellow, err, colorReset)
 				} else {
-					fmt.Printf("%s✓ Port forwarding updated%s\n", green, reset)
+					fmt.Printf("%s✓ Port forwarding updated%s\n", colorGreen, colorReset)
 				}
 			} else {
 				fmt.Println("Skipped. You can update later with: roost-dev ports install")
 			}
 		} else {
-			fmt.Printf("%s✓ Already installed%s\n", green, reset)
+			fmt.Printf("%s✓ Already installed%s\n", colorGreen, colorReset)
 			fmt.Println("  Found: /etc/pf.anchors/roost-dev")
 			fmt.Println("  Found: /Library/LaunchDaemons/dev.roost.pfctl.plist")
 			fmt.Printf("  Found: /etc/resolver/%s\n", tld)
@@ -623,10 +605,10 @@ func runSetupWizard(configDir, tld string) {
 			// Set ROOST_DEV_YES to skip the second confirmation in runPortsInstall
 			os.Setenv("ROOST_DEV_YES", "1")
 			if err := runPortsInstall(configDir, tld); err != nil {
-				fmt.Printf("\n%s⚠ Port forwarding failed: %v%s\n", yellow, err, reset)
+				fmt.Printf("\n%s⚠ Port forwarding failed: %v%s\n", colorYellow, err, colorReset)
 				fmt.Println("You can retry later with: roost-dev ports install")
 			} else {
-				fmt.Printf("%s✓ Port forwarding installed%s\n", green, reset)
+				fmt.Printf("%s✓ Port forwarding installed%s\n", colorGreen, colorReset)
 			}
 			os.Unsetenv("ROOST_DEV_YES")
 		} else {
@@ -641,7 +623,7 @@ func runSetupWizard(configDir, tld string) {
 	fmt.Println("Step 2/3: HTTPS Certificates")
 	fmt.Println()
 	if isCertInstalled(configDir) {
-		fmt.Printf("%s✓ Already installed%s\n", green, reset)
+		fmt.Printf("%s✓ Already installed%s\n", colorGreen, colorReset)
 		fmt.Printf("  Found: %s/certs/ca-key.pem\n", configDir)
 		fmt.Printf("  Found: %s/certs/ca.pem\n", configDir)
 	} else {
@@ -659,10 +641,10 @@ func runSetupWizard(configDir, tld string) {
 			// Set ROOST_DEV_YES to skip the second confirmation in runCertInstall
 			os.Setenv("ROOST_DEV_YES", "1")
 			if err := runCertInstall(configDir, tld); err != nil {
-				fmt.Printf("\n%s⚠ Certificate setup failed: %v%s\n", yellow, err, reset)
+				fmt.Printf("\n%s⚠ Certificate setup failed: %v%s\n", colorYellow, err, colorReset)
 				fmt.Println("You can retry later with: roost-dev cert install")
 			} else {
-				fmt.Printf("%s✓ HTTPS certificates installed%s\n", green, reset)
+				fmt.Printf("%s✓ HTTPS certificates installed%s\n", colorGreen, colorReset)
 			}
 			os.Unsetenv("ROOST_DEV_YES")
 		} else {
@@ -678,12 +660,12 @@ func runSetupWizard(configDir, tld string) {
 	fmt.Println()
 	installed, running := isServiceInstalled()
 	if installed {
-		fmt.Printf("%s✓ Already installed%s\n", green, reset)
+		fmt.Printf("%s✓ Already installed%s\n", colorGreen, colorReset)
 		fmt.Println("  Found: ~/Library/LaunchAgents/com.roost-dev.plist")
 		if running {
 			fmt.Println("  Status: running")
 		} else {
-			fmt.Printf("  %sStatus: not running%s\n", yellow, reset)
+			fmt.Printf("  %sStatus: not running%s\n", colorYellow, colorReset)
 		}
 	} else {
 		fmt.Println("This step makes roost-dev start automatically when you log in,")
@@ -699,10 +681,10 @@ func runSetupWizard(configDir, tld string) {
 			// Set ROOST_DEV_YES to skip the second confirmation in runServiceInstall
 			os.Setenv("ROOST_DEV_YES", "1")
 			if err := runServiceInstall(); err != nil {
-				fmt.Printf("\n%s⚠ Service install failed: %v%s\n", yellow, err, reset)
+				fmt.Printf("\n%s⚠ Service install failed: %v%s\n", colorYellow, err, colorReset)
 				fmt.Println("You can retry later with: roost-dev service install")
 			} else {
-				fmt.Printf("%s✓ Background service installed%s\n", green, reset)
+				fmt.Printf("%s✓ Background service installed%s\n", colorGreen, colorReset)
 			}
 			os.Unsetenv("ROOST_DEV_YES")
 		} else {
@@ -727,12 +709,7 @@ func runSetupWizard(configDir, tld string) {
 
 // runTeardownWizard removes all roost-dev configuration
 func runTeardownWizard(tld string) {
-	yellow := "\033[33m"
-	green := "\033[32m"
-	reset := "\033[0m"
-
-	homeDir, _ := os.UserHomeDir()
-	configDir := filepath.Join(homeDir, ".config", "roost-dev")
+	configDir := getDefaultConfigDir()
 
 	fmt.Println("roost-dev teardown")
 	fmt.Println()
@@ -747,7 +724,7 @@ func runTeardownWizard(tld string) {
 	fmt.Println()
 	installed, running := isServiceInstalled()
 	if !installed {
-		fmt.Printf("%s✓ Already removed%s\n", green, reset)
+		fmt.Printf("%s✓ Already removed%s\n", colorGreen, colorReset)
 		fmt.Println("  Not found: ~/Library/LaunchAgents/com.roost-dev.plist")
 	} else {
 		if running {
@@ -756,12 +733,12 @@ func runTeardownWizard(tld string) {
 		// Show summary and confirm (? shows full diff)
 		plan := serviceUninstallPlan()
 		if confirmWithPlan(plan, "Remove background service?") {
-			// Unload the agent
+			// Unload the agent (ignore errors - may not be running)
 			exec.Command("launchctl", "bootout", fmt.Sprintf("gui/%d/com.roost-dev", os.Getuid())).Run()
 			if err := plan.Execute(); err != nil {
-				fmt.Printf("%s⚠ Service removal failed: %v%s\n", yellow, err, reset)
+				fmt.Printf("%s⚠ Service removal failed: %v%s\n", colorYellow, err, colorReset)
 			} else {
-				fmt.Printf("%s✓ Background service removed%s\n", green, reset)
+				fmt.Printf("%s✓ Background service removed%s\n", colorGreen, colorReset)
 			}
 		} else {
 			fmt.Println("Skipped.")
@@ -775,7 +752,7 @@ func runTeardownWizard(tld string) {
 	fmt.Println("Step 2/3: HTTPS Certificates")
 	fmt.Println()
 	if !isCertInstalled(configDir) {
-		fmt.Printf("%s✓ Already removed%s\n", green, reset)
+		fmt.Printf("%s✓ Already removed%s\n", colorGreen, colorReset)
 		fmt.Printf("  Not found: %s/certs/\n", configDir)
 	} else {
 		fmt.Println("Note: The CA in your system keychain must be removed manually")
@@ -784,11 +761,11 @@ func runTeardownWizard(tld string) {
 		plan := certUninstallPlan()
 		if confirmWithPlan(plan, "Remove HTTPS certificates?") {
 			if err := plan.Execute(); err != nil {
-				fmt.Printf("%s⚠ Certificate removal failed: %v%s\n", yellow, err, reset)
+				fmt.Printf("%s⚠ Certificate removal failed: %v%s\n", colorYellow, err, colorReset)
 			} else {
 				// Also try to remove the certs directory itself if empty
 				os.Remove(getCertsDir())
-				fmt.Printf("%s✓ HTTPS certificates removed%s\n", green, reset)
+				fmt.Printf("%s✓ HTTPS certificates removed%s\n", colorGreen, colorReset)
 			}
 		} else {
 			fmt.Println("Skipped.")
@@ -802,7 +779,7 @@ func runTeardownWizard(tld string) {
 	fmt.Println("Step 3/3: Port Forwarding")
 	fmt.Println()
 	if !isPortForwardingInstalled(tld) {
-		fmt.Printf("%s✓ Already removed%s\n", green, reset)
+		fmt.Printf("%s✓ Already removed%s\n", colorGreen, colorReset)
 		fmt.Println("  Not found: /etc/pf.anchors/roost-dev")
 		fmt.Println("  Not found: /Library/LaunchDaemons/dev.roost.pfctl.plist")
 		fmt.Printf("  Not found: /etc/resolver/%s\n", tld)
@@ -814,7 +791,7 @@ func runTeardownWizard(tld string) {
 			// Set ROOST_DEV_YES to skip the second confirmation in runPortsUninstall
 			os.Setenv("ROOST_DEV_YES", "1")
 			if err := runPortsUninstall(tld); err != nil {
-				fmt.Printf("%s⚠ Port forwarding removal failed: %v%s\n", yellow, err, reset)
+				fmt.Printf("%s⚠ Port forwarding removal failed: %v%s\n", colorYellow, err, colorReset)
 			}
 			os.Unsetenv("ROOST_DEV_YES")
 			// runPortsUninstall prints its own success message
@@ -833,15 +810,9 @@ func runTeardownWizard(tld string) {
 
 // runOverallStatus shows status of all components
 func runOverallStatus() {
-	homeDir, _ := os.UserHomeDir()
-	configDir := filepath.Join(homeDir, ".config", "roost-dev")
-
 	// Load TLD from config
-	globalCfg, _ := loadGlobalConfig(configDir)
-	tld := "test"
-	if globalCfg != nil && globalCfg.TLD != "" {
-		tld = globalCfg.TLD
-	}
+	globalCfg, _ := getConfigWithDefaults()
+	tld := globalCfg.TLD
 
 	fmt.Println()
 	fmt.Println("roost-dev status")

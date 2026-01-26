@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -34,18 +33,14 @@ type SvcStatus struct {
 
 // cmdList handles the 'list' command
 func cmdList(args []string) {
-	// Check for help
-	for _, arg := range args {
-		if arg == "-h" || arg == "--help" || arg == "help" {
-			fmt.Println(`roost-dev list - List configured apps and their status
+	if checkHelpFlag(args, `roost-dev list - List configured apps and their status
 
 USAGE:
     roost-dev list
 
 Shows all configured apps, their running status, and URLs.
-If the server is not running, shows config files only.`)
-			os.Exit(0)
-		}
+If the server is not running, shows config files only.`) {
+		os.Exit(0)
 	}
 
 	if err := runList(); err != nil {
@@ -55,13 +50,7 @@ If the server is not running, shows config files only.`)
 }
 
 func runList() error {
-	// Load config to get TLD
-	homeDir, _ := os.UserHomeDir()
-	configDir := filepath.Join(homeDir, ".config", "roost-dev")
-	globalCfg, err := loadGlobalConfig(configDir)
-	if err != nil {
-		globalCfg = &GlobalConfig{TLD: "test"}
-	}
+	globalCfg, configDir := getConfigWithDefaults()
 
 	// Try to get status from running server
 	url := fmt.Sprintf("http://roost-dev.%s/api/status", globalCfg.TLD)
@@ -120,11 +109,11 @@ func runList() error {
 		paddedStatus := fmt.Sprintf("%-10s", status)
 		switch {
 		case status == "running":
-			paddedStatus = "\033[32m" + paddedStatus + "\033[0m" // green
+			paddedStatus = colorGreen + paddedStatus + colorReset
 		case status == "idle":
-			paddedStatus = "\033[90m" + paddedStatus + "\033[0m" // gray
+			paddedStatus = colorGray + paddedStatus + colorReset
 		case strings.Contains(status, "/"):
-			paddedStatus = "\033[33m" + paddedStatus + "\033[0m" // yellow for partial
+			paddedStatus = colorYellow + paddedStatus + colorReset
 		}
 
 		name := app.Name
@@ -155,9 +144,9 @@ func runList() error {
 				// Format and colorize status
 				svcPaddedStatus := fmt.Sprintf("%-10s", svcStatus)
 				if svcStatus == "running" {
-					svcPaddedStatus = "\033[32m" + svcPaddedStatus + "\033[0m" // green
+					svcPaddedStatus = colorGreen + svcPaddedStatus + colorReset
 				} else {
-					svcPaddedStatus = "\033[90m" + svcPaddedStatus + "\033[0m" // gray
+					svcPaddedStatus = colorGray + svcPaddedStatus + colorReset
 				}
 
 				svcName := fmt.Sprintf("%s %s", prefix, svc.Name)

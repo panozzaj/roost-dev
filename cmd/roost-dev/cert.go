@@ -65,14 +65,11 @@ EXAMPLES:
 func cmdCertInstall(args []string) {
 	fs := flag.NewFlagSet("cert install", flag.ExitOnError)
 
-	homeDir, _ := os.UserHomeDir()
-	defaultConfigDir := filepath.Join(homeDir, ".config", "roost-dev")
-
 	var tld string
 	var configDir string
 
 	fs.StringVar(&tld, "tld", "test", "TLD for certificate (e.g., test)")
-	fs.StringVar(&configDir, "dir", defaultConfigDir, "Configuration directory")
+	fs.StringVar(&configDir, "dir", getDefaultConfigDir(), "Configuration directory")
 
 	fs.Usage = func() {
 		fmt.Println(`roost-dev cert install - Generate and trust the roost-dev CA
@@ -116,17 +113,14 @@ DESCRIPTION:
 }
 
 func cmdCertUninstall(args []string) {
-	for _, arg := range args {
-		if arg == "-h" || arg == "--help" || arg == "help" {
-			fmt.Println(`roost-dev cert uninstall - Remove HTTPS certificates
+	if checkHelpFlag(args, `roost-dev cert uninstall - Remove HTTPS certificates
 
 USAGE:
     roost-dev cert uninstall
 
 Removes the roost-dev CA and certificates from the config directory.
-Also removes the CA from the system trust store (requires sudo).`)
-			os.Exit(0)
-		}
+Also removes the CA from the system trust store (requires sudo).`) {
+		os.Exit(0)
 	}
 
 	if err := runCertUninstall(); err != nil {
@@ -135,24 +129,20 @@ Also removes the CA from the system trust store (requires sudo).`)
 }
 
 func cmdCertStatus(args []string) {
-	for _, arg := range args {
-		if arg == "-h" || arg == "--help" || arg == "help" {
-			fmt.Println(`roost-dev cert status - Show certificate status
+	if checkHelpFlag(args, `roost-dev cert status - Show certificate status
 
 USAGE:
     roost-dev cert status
 
-Shows whether certificates are installed and their details.`)
-			os.Exit(0)
-		}
+Shows whether certificates are installed and their details.`) {
+		os.Exit(0)
 	}
 
 	runCertStatus()
 }
 
 func getCertsDir() string {
-	homeDir, _ := os.UserHomeDir()
-	return filepath.Join(homeDir, ".config", "roost-dev", "certs")
+	return filepath.Join(getDefaultConfigDir(), "certs")
 }
 
 // certInstallPlan returns a Plan for certificate installation preview.
@@ -247,13 +237,10 @@ func runCertInstall(configDir, tld string) error {
 }
 
 func runCertUninstall() error {
-	green := "\033[32m"
-	reset := "\033[0m"
-
 	certsDir := getCertsDir()
 
 	if _, err := os.Stat(certsDir); os.IsNotExist(err) {
-		fmt.Printf("%s✓ No certificates installed%s\n", green, reset)
+		fmt.Printf("%s✓ No certificates installed%s\n", colorGreen, colorReset)
 		return nil
 	}
 
@@ -271,21 +258,16 @@ func runCertUninstall() error {
 	// Also try to remove the certs directory itself if empty
 	os.Remove(certsDir)
 
-	fmt.Printf("%s✓ Certificates removed%s\n", green, reset)
+	fmt.Printf("%s✓ Certificates removed%s\n", colorGreen, colorReset)
 	return nil
 }
 
 func runCertStatus() {
 	certsDir := getCertsDir()
-	homeDir, _ := os.UserHomeDir()
-	configDir := filepath.Join(homeDir, ".config", "roost-dev")
 
 	// Load TLD from config
-	globalCfg, _ := loadGlobalConfig(configDir)
-	tld := "test"
-	if globalCfg != nil {
-		tld = globalCfg.TLD
-	}
+	globalCfg, _ := getConfigWithDefaults()
+	tld := globalCfg.TLD
 
 	caFile := filepath.Join(certsDir, "ca.pem")
 	keyFile := filepath.Join(certsDir, "ca-key.pem")

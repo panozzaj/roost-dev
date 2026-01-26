@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"github.com/panozzaj/roost-dev/internal/diff"
@@ -59,16 +58,13 @@ DESCRIPTION:
 func cmdPortsInstall(args []string) {
 	fs := flag.NewFlagSet("ports install", flag.ExitOnError)
 
-	homeDir, _ := os.UserHomeDir()
-	defaultConfigDir := filepath.Join(homeDir, ".config", "roost-dev")
-
 	var (
 		tld       string
 		configDir string
 	)
 
 	fs.StringVar(&tld, "tld", "test", "Top-level domain to configure")
-	fs.StringVar(&configDir, "dir", defaultConfigDir, "Configuration directory")
+	fs.StringVar(&configDir, "dir", getDefaultConfigDir(), "Configuration directory")
 
 	fs.Usage = func() {
 		fmt.Println(`roost-dev ports install - Setup port forwarding
@@ -226,14 +222,12 @@ func confirmPortsInstall(tld, prompt string) bool {
 	}
 
 	// Print summary
-	yellow := "\033[33m"
-	reset := "\033[0m"
 	fmt.Println()
 	if summary != nil {
 		summary.Print()
 	}
 	if pfConfNeedsUpdate {
-		fmt.Printf("  %s~%s /etc/pf.conf (modified)\n", yellow, reset)
+		fmt.Printf("  %s~%s /etc/pf.conf (modified)\n", colorYellow, colorReset)
 		fmt.Println()
 	}
 
@@ -249,12 +243,10 @@ func confirmPortsInstall(tld, prompt string) bool {
 			fmt.Println()
 			plan.Preview()
 			if pfConfNeedsUpdate {
-				dim := "\033[2m"
-				cyan := "\033[36m"
-				fmt.Printf("%s~~~ /etc/pf.conf (will be modified)%s\n", cyan, reset)
-				fmt.Printf("%s  Will add after com.apple anchors:%s\n", dim, reset)
-				fmt.Printf("%s    rdr-anchor \"roost-dev\"%s\n", dim, reset)
-				fmt.Printf("%s    load anchor \"roost-dev\" from \"/etc/pf.anchors/roost-dev\"%s\n", dim, reset)
+				fmt.Printf("%s~~~ /etc/pf.conf (will be modified)%s\n", colorCyan, colorReset)
+				fmt.Printf("%s  Will add after com.apple anchors:%s\n", colorDim, colorReset)
+				fmt.Printf("%s    rdr-anchor \"roost-dev\"%s\n", colorDim, colorReset)
+				fmt.Printf("%s    load anchor \"roost-dev\" from \"/etc/pf.anchors/roost-dev\"%s\n", colorDim, colorReset)
 				fmt.Println()
 			}
 		default:
@@ -386,12 +378,9 @@ func runPortsInstall(configDir, tld string) error {
 }
 
 func runPortsUninstall(tld string) error {
-	green := "\033[32m"
-	reset := "\033[0m"
-
 	// Check if already uninstalled (before prompting for sudo)
 	if !isPortForwardingInstalled(tld) {
-		fmt.Printf("%s✓ Port forwarding is not installed%s\n", green, reset)
+		fmt.Printf("%s✓ Port forwarding is not installed%s\n", colorGreen, colorReset)
 		fmt.Println("  Not found: /etc/pf.anchors/roost-dev")
 		fmt.Println("  Not found: /Library/LaunchDaemons/dev.roost.pfctl.plist")
 		fmt.Printf("  Not found: /etc/resolver/%s\n", tld)
@@ -425,10 +414,10 @@ func runPortsUninstall(tld string) error {
 
 	fmt.Println("Removing port forwarding...")
 
-	// Flush our anchor (suppress output)
+	// Flush our anchor (ignore errors - anchor may not exist)
 	exec.Command("/sbin/pfctl", "-a", "roost-dev", "-F", "all").Run()
 
-	// Unload launchd before removing plist
+	// Unload launchd before removing plist (ignore errors - may not be loaded)
 	exec.Command("/bin/launchctl", "bootout", "system/dev.roost.pfctl").Run()
 
 	// Execute the plan for file deletion (same plan used for preview, ensuring sync)
@@ -437,7 +426,7 @@ func runPortsUninstall(tld string) error {
 		return err
 	}
 
-	fmt.Printf("%s✓ Port forwarding removed%s\n", green, reset)
+	fmt.Printf("%s✓ Port forwarding removed%s\n", colorGreen, colorReset)
 
 	// Only mention backup if it exists
 	backupPath := "/etc/pf.conf.roost-dev-backup"
