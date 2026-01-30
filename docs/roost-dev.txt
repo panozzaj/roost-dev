@@ -105,6 +105,7 @@ URLS AND ROUTING
 COMMANDS
     APP STATUS
         roost-dev status          List apps and their running status
+        roost-dev status myapp    Filter to apps/services matching "myapp"
         roost-dev status --json   Output as JSON (same as /api/status)
         roost-dev list            Alias for 'status'
 

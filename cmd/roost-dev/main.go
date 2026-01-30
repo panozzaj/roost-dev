@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -529,13 +530,21 @@ func cmdStatus(args []string) {
 		fmt.Println(`roost-dev status - Show status of configured apps
 
 USAGE:
-    roost-dev status [options]
+    roost-dev status [options] [filter]
+
+ARGUMENTS:
+    filter            Optional filter to match app or service names (substring match)
 
 OPTIONS:`)
 		fs.PrintDefaults()
 		fmt.Println(`
 Shows all configured apps, their running status, and URLs.
 Use --json for machine-readable output (same as /api/status).
+
+EXAMPLES:
+    roost-dev status              # Show all apps
+    roost-dev status family       # Filter to apps/services matching "family"
+    roost-dev status --json api   # JSON output filtered to "api"
 
 For setup component status (ports, cert, service), use:
     roost-dev setup status`)
@@ -551,14 +560,147 @@ For setup component status (ports, cert, service), use:
 
 	fs.Parse(args)
 
-	if err := runStatus(*jsonOutput); err != nil {
+	// Get optional filter argument
+	filter := ""
+	if fs.NArg() > 0 {
+		filter = fs.Arg(0)
+	}
+
+	if err := runStatus(*jsonOutput, filter); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-// runStatus displays app status, optionally as JSON
-func runStatus(jsonOutput bool) error {
+// filterApps returns apps that match the filter (case-insensitive substring match on app name, aliases, or service names)
+func filterApps(apps []AppStatus, filter string) []AppStatus {
+	filter = strings.ToLower(filter)
+	var result []AppStatus
+
+	for _, app := range apps {
+		// Check if app name or aliases match
+		appMatches := strings.Contains(strings.ToLower(app.Name), filter)
+		if !appMatches {
+			for _, alias := range app.Aliases {
+				if strings.Contains(strings.ToLower(alias), filter) {
+					appMatches = true
+					break
+				}
+			}
+		}
+
+		if appMatches {
+			result = append(result, app)
+			continue
+		}
+
+		// Check if any services match (for multi-service apps)
+		if len(app.Services) > 0 {
+			var matchingServices []SvcStatus
+			for _, svc := range app.Services {
+				if strings.Contains(strings.ToLower(svc.Name), filter) {
+					matchingServices = append(matchingServices, svc)
+				}
+			}
+			if len(matchingServices) > 0 {
+				// Include app but only with matching services
+				filteredApp := app
+				filteredApp.Services = matchingServices
+				result = append(result, filteredApp)
+			}
+		}
+	}
+
+	return result
+}
+
+// findSimilarNames finds app/service names similar to the filter using Levenshtein distance
+func findSimilarNames(apps []AppStatus, filter string) []string {
+	filter = strings.ToLower(filter)
+	type scored struct {
+		name  string
+		score int
+	}
+	var candidates []scored
+
+	for _, app := range apps {
+		// Score app name
+		dist := levenshtein(strings.ToLower(app.Name), filter)
+		if dist <= 3 || strings.Contains(strings.ToLower(app.Name), filter[:min(len(filter), 3)]) {
+			candidates = append(candidates, scored{app.Name, dist})
+		}
+
+		// Score aliases
+		for _, alias := range app.Aliases {
+			dist := levenshtein(strings.ToLower(alias), filter)
+			if dist <= 3 || strings.Contains(strings.ToLower(alias), filter[:min(len(filter), 3)]) {
+				candidates = append(candidates, scored{alias, dist})
+			}
+		}
+
+		// Score services
+		for _, svc := range app.Services {
+			dist := levenshtein(strings.ToLower(svc.Name), filter)
+			if dist <= 3 || strings.Contains(strings.ToLower(svc.Name), filter[:min(len(filter), 3)]) {
+				candidates = append(candidates, scored{fmt.Sprintf("%s (service in %s)", svc.Name, app.Name), dist})
+			}
+		}
+	}
+
+	// Sort by score and dedupe
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].score < candidates[j].score
+	})
+
+	seen := make(map[string]bool)
+	var result []string
+	for _, c := range candidates {
+		if !seen[c.name] && len(result) < 5 {
+			seen[c.name] = true
+			result = append(result, c.name)
+		}
+	}
+
+	return result
+}
+
+// levenshtein calculates the Levenshtein distance between two strings
+func levenshtein(a, b string) int {
+	if len(a) == 0 {
+		return len(b)
+	}
+	if len(b) == 0 {
+		return len(a)
+	}
+
+	if len(a) > len(b) {
+		a, b = b, a
+	}
+
+	prev := make([]int, len(a)+1)
+	curr := make([]int, len(a)+1)
+
+	for i := range prev {
+		prev[i] = i
+	}
+
+	for j := 1; j <= len(b); j++ {
+		curr[0] = j
+		for i := 1; i <= len(a); i++ {
+			cost := 1
+			if a[i-1] == b[j-1] {
+				cost = 0
+			}
+			curr[i] = min(min(curr[i-1]+1, prev[i]+1), prev[i-1]+cost)
+		}
+		prev, curr = curr, prev
+	}
+
+	return prev[len(a)]
+}
+
+// runStatus displays app status, optionally as JSON, with optional filter
+func runStatus(jsonOutput bool, filter string) error {
 	globalCfg, configDir := getConfigWithDefaults()
 
 	// Try to get status from running server
@@ -583,20 +725,45 @@ func runStatus(jsonOutput bool) error {
 		return listConfigFiles(configDir, globalCfg.TLD)
 	}
 
-	// For JSON output, just pass through the API response
-	if jsonOutput {
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return fmt.Errorf("failed to read response: %v", err)
-		}
-		fmt.Println(string(body))
-		return nil
+	// Parse status
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response: %v", err)
 	}
 
-	// Parse and display formatted output
 	var apps []AppStatus
-	if err := json.NewDecoder(resp.Body).Decode(&apps); err != nil {
+	if err := json.Unmarshal(body, &apps); err != nil {
 		return fmt.Errorf("failed to parse status: %v", err)
+	}
+
+	// Apply filter if provided
+	if filter != "" {
+		apps = filterApps(apps, filter)
+		if len(apps) == 0 {
+			// No matches - suggest similar names
+			var allApps []AppStatus
+			json.Unmarshal(body, &allApps)
+			suggestions := findSimilarNames(allApps, filter)
+			if jsonOutput {
+				fmt.Println("[]")
+			} else {
+				fmt.Printf("No apps or services matching %q found.\n", filter)
+				if len(suggestions) > 0 {
+					fmt.Printf("\nDid you mean one of these?\n")
+					for _, s := range suggestions {
+						fmt.Printf("  %s\n", s)
+					}
+				}
+			}
+			return nil
+		}
+	}
+
+	// For JSON output, marshal filtered results
+	if jsonOutput {
+		output, _ := json.Marshal(apps)
+		fmt.Println(string(output))
+		return nil
 	}
 
 	if len(apps) == 0 {
